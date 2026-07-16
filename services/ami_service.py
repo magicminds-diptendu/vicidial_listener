@@ -1,8 +1,6 @@
 from collections import defaultdict
 from threading import Event
-
 from asterisk.ami import AMIClient
-
 from config.settings import settings
 from services.logger import logger
 
@@ -32,7 +30,6 @@ class AMIService:
         if self.client:
             self.client.logoff()
             logger.info("Disconnected from AMI")
-
 
     def on(self, event_name: str):
         """

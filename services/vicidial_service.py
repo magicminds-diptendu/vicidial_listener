@@ -1,5 +1,4 @@
 import pymysql
-
 from config.settings import settings
 from services.logger import logger
 

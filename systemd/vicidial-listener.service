@@ -8,17 +8,17 @@ Type=simple
 User=root
 Group=root
 
-WorkingDirectory=/opt/vicidial-listener
+WorkingDirectory=/opt/vicidial_listener
 
 Environment=PYTHONUNBUFFERED=1
 
-ExecStart=/opt/vicidial-listener/venv/bin/python /opt/vicidial-listener/app.py
+ExecStart=/opt/vicidial_listener/venv/bin/python /opt/vicidial_listener/app.py
 
 Restart=always
 RestartSec=5
 
-StandardOutput=append:/opt/vicidial-listener/logs/listener.log
-StandardError=append:/opt/vicidial-listener/logs/listener.log
+StandardOutput=append:/opt/vicidial_listener/logs/listener.log
+StandardError=append:/opt/vicidial_listener/logs/listener.log
 
 [Install]
 WantedBy=multi-user.target

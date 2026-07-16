@@ -5,6 +5,8 @@ load_dotenv()
 
 
 class Settings:
+    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
     AMI_HOST = os.getenv("AMI_HOST")
     AMI_PORT = int(os.getenv("AMI_PORT", 5038))
     AMI_USERNAME = os.getenv("AMI_USERNAME")
