@@ -24,6 +24,9 @@ class AMIService:
 
         logger.info(future.response)
 
+        logger.info(type(self.client))
+        logger.info(dir(self.client))
+
         # self.client.add_event_listener(self._dispatch)
         self.client.add_event_listener(lambda event, **kwargs: logger.info("EVENT:", event))
 
