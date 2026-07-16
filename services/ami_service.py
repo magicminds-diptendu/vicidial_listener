@@ -28,9 +28,6 @@ class AMIService:
 
         logger.info(response)
 
-        if response.get("Response") != "Success":
-            raise Exception("AMI Authentication Failed")
-
         logger.info(f"Connected to AMI ({settings.AMI_HOST}:{settings.AMI_PORT})")
 
         # Start listening in background
