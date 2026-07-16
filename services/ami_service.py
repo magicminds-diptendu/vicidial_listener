@@ -17,10 +17,12 @@ class AMIService:
             port=settings.AMI_PORT,
         )
 
-        self.client.login(
+        future = self.client.login(
             username=settings.AMI_USERNAME,
             secret=settings.AMI_PASSWORD,
         )
+
+        logger.info(future.response)
 
         self.client.add_event_listener(self._dispatch)
 
@@ -51,6 +53,9 @@ class AMIService:
 
     def _dispatch(self, event, **kwargs):
         """Dispatch incoming AMI events."""
+        logger.info("=" * 50)
+        logger.info(event.name)
+        logger.info(event.keys)
         handlers = self._handlers.get(event.name, [])
 
         if not handlers:
