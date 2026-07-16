@@ -24,7 +24,8 @@ class AMIService:
 
         logger.info(future.response)
 
-        self.client.add_event_listener(self._dispatch)
+        # self.client.add_event_listener(self._dispatch)
+        self.client.add_event_listener(lambda event, **kwargs: logger.info("EVENT:", event))
 
         logger.info(f"Connected to AMI ({settings.AMI_HOST}:{settings.AMI_PORT})")
 
