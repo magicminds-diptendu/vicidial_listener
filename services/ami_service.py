@@ -15,6 +15,7 @@ class AMIService:
         self.client = AMIClient(
             address=settings.AMI_HOST,
             port=settings.AMI_PORT,
+            timeout=None,
         )
 
         self.client.add_event_listener(self._dispatch)
