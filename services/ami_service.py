@@ -15,7 +15,6 @@ class AMIService:
         self.client = AMIClient(
             address=settings.AMI_HOST,
             port=settings.AMI_PORT,
-            timeout=None,
         )
 
         self.client.add_event_listener(self._dispatch)
@@ -26,16 +25,9 @@ class AMIService:
         )
 
         response = future.response
-
         logger.info(response)
-
         logger.info(f"Connected to AMI ({settings.AMI_HOST}:{settings.AMI_PORT})")
 
-        # Start listening in background
-        Thread(
-            target=self.client.listen,
-            daemon=True,
-        ).start()
 
     def disconnect(self):
         """Disconnect from AMI."""
