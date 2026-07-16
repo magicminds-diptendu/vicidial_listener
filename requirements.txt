@@ -1,4 +1,4 @@
 asterisk-ami==0.1.7
-PyMySQL==1.1.1
+PyMySQL==1.0.2
 python-dotenv==1.0.1
-requests==2.31.0
+requests==2.27.1
