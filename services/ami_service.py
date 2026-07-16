@@ -1,5 +1,5 @@
 from collections import defaultdict
-from threading import Event
+from threading import Event, Thread
 from asterisk.ami import AMIClient
 from config.settings import settings
 from services.logger import logger
@@ -11,31 +11,42 @@ class AMIService:
         self._handlers = defaultdict(list)
 
     def connect(self):
-        """Connect to Asterisk AMI."""
+        """Connect to Asterisk AMI and start listening."""
         self.client = AMIClient(
             address=settings.AMI_HOST,
             port=settings.AMI_PORT,
         )
+
+        self.client.add_event_listener(self._dispatch)
 
         future = self.client.login(
             username=settings.AMI_USERNAME,
             secret=settings.AMI_PASSWORD,
         )
 
-        logger.info(future.response)
+        response = future.response
 
-        logger.info(type(self.client))
-        logger.info(dir(self.client))
+        logger.info(response)
 
-        # self.client.add_event_listener(self._dispatch)
-        self.client.add_event_listener(lambda event, **kwargs: logger.info("EVENT:", event))
+        if response.get("Response") != "Success":
+            raise Exception("AMI Authentication Failed")
 
         logger.info(f"Connected to AMI ({settings.AMI_HOST}:{settings.AMI_PORT})")
 
+        # Start listening in background
+        Thread(
+            target=self.client.listen,
+            daemon=True,
+        ).start()
+
     def disconnect(self):
+        """Disconnect from AMI."""
         if self.client:
-            self.client.logoff()
-            logger.info("Disconnected from AMI")
+            try:
+                self.client.logoff()
+                logger.info("Disconnected from AMI")
+            except Exception:
+                pass
 
     def on(self, event_name: str):
         """
@@ -57,9 +68,11 @@ class AMIService:
 
     def _dispatch(self, event, **kwargs):
         """Dispatch incoming AMI events."""
+
         logger.info("=" * 50)
         logger.info(event.name)
         logger.info(event.keys)
+
         handlers = self._handlers.get(event.name, [])
 
         if not handlers:
@@ -72,6 +85,8 @@ class AMIService:
                 logger.exception(f"Error while handling event '{event.name}'")
 
     def start(self):
+        """Start AMI listener."""
+
         self.connect()
 
         logger.info("AMI listener started")
