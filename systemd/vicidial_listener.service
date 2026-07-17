@@ -17,8 +17,5 @@ ExecStart=/opt/vicidial_listener/venv/bin/python /opt/vicidial_listener/app.py
 Restart=always
 RestartSec=5
 
-StandardOutput=append:/opt/vicidial_listener/logs/listener.log
-StandardError=append:/opt/vicidial_listener/logs/listener.log
-
 [Install]
 WantedBy=multi-user.target
