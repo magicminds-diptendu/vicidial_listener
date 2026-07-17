@@ -18,6 +18,8 @@ def boot(event):
 
 @ami.on("NewCallerid")
 def handle_new_call(event):
+    event = dict(event)
+    
     logger.info("Incoming call")
     logger.info(event.keys)
 
