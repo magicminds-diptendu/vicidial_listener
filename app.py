@@ -45,27 +45,11 @@ def handle_new_call(event):
 
             logger.debug(f"Customers Info: {comments}")
 
-            lead = vicidial_service.execute_one(
-                """
-                SELECT *
-                FROM vicidial_list
-                WHERE phone_number = %s
-                ORDER BY lead_id DESC
-                LIMIT 1
-                """,
-                (phone,),
+            vicidial_service.update_list(
+                phone_number=phone,
+                email=customer.get("email"),
+                comments=comments,
             )
-
-            if not lead:
-                logger.warning(f"No VICIdial lead found for {phone}")
-            else:
-                logger.debug("Vicidial List info", lead)
-
-            # vicidial_service.update_list(
-            #     phone_number=phone,
-            #     email=customer.get("email"),
-            #     comments=comments,
-            # )
             logger.info(f"Customer Info Updated: {phone}")
         else:
             logger.info("Skipping VICIdial update. Customer not found.")
