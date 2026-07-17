@@ -61,6 +61,8 @@ class AMIService:
         """Dispatch incoming AMI events."""
 
         logger.info("=" * 50)
+        logger.info(type(event))
+        logger.info(dir(event))
         logger.info(event.name)
         logger.info(event.keys)
 
