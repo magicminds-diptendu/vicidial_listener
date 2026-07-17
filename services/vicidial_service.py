@@ -79,7 +79,7 @@ class VicidialService:
 
         self.update(query, values)
 
-        logger.info(f"Updated lead {lead_id} with fields: {list(fields.keys())}")
+        logger.debug(f"Updated lead {lead_id} with fields: {list(fields.keys())}")
         return True
 
     def close(self):

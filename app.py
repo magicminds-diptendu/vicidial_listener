@@ -13,12 +13,12 @@ vicidial_service = VicidialService()
 
 @ami.on("FullyBooted")
 def boot(event):
-    logger.info("Asterisk Ready")
+    logger.debug("Asterisk Ready")
 
 
 @ami.on("NewCallerid")
 def handle_new_call(event):
-    logger.info("Incoming call")
+    logger.debug("Incoming call")
 
     try:
         channel = event.keys.get("Channel", "")
@@ -32,7 +32,7 @@ def handle_new_call(event):
         if not phone.isdigit():
             return
 
-        logger.info(f"Customer Phone: {phone}")
+        logger.debug(f"Customer Phone: {phone}")
 
         customer = customer_service.get_customer(phone)
 
@@ -43,7 +43,7 @@ def handle_new_call(event):
                 f"Phone Number: {customer.get('phone', '')}"
             )
 
-            logger.info(f"Customers Info: {comments}")
+            logger.debug(f"Customers Info: {comments}")
 
             lead = vicidial_service.execute_one(
                 """
@@ -59,7 +59,7 @@ def handle_new_call(event):
             if not lead:
                 logger.warning(f"No VICIdial lead found for {phone}")
             else:
-                logger.info("Vicidial List info", lead)
+                logger.debug("Vicidial List info", lead)
 
             # vicidial_service.update_list(
             #     phone_number=phone,

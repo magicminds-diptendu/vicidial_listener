@@ -6,7 +6,7 @@ from config.settings import settings
 class CustomerService:
 
     def get_customer(self, phone):
-        logger.info(f"Calling Customer API for phone: {phone}")
+        logger.debug(f"Calling Customer API for phone: {phone}")
 
         url = settings.API_BASE_URL
 
@@ -19,10 +19,10 @@ class CustomerService:
             timeout=10,
         )
 
-        logger.info(f"Customer API Status: {response.status_code}")
+        logger.debug(f"Customer API Status: {response.status_code}")
 
         if response.status_code != 200:
-            logger.info(f"No customer found for phone: {phone}")
+            logger.info(f"API: No customer found for phone: {phone}")
             return None
 
         return response.json()

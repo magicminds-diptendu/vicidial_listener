@@ -58,9 +58,9 @@ class AMIService:
     def _dispatch(self, event, **kwargs):
         """Dispatch incoming AMI events."""
 
-        logger.info("=" * 50)
-        logger.info(event.name)
-        logger.info(event.keys)
+        logger.debug("=" * 50)
+        logger.debug(event.name)
+        logger.debug(event.keys)
 
         handlers = self._handlers.get(event.name, [])
 
