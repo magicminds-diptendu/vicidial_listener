@@ -64,6 +64,7 @@ class AMIService:
         logger.info(type(event))
         logger.info(dir(event))
         logger.info(event.name)
+        logger.info(event.keys.get("Privilege", ""))
         logger.info(event.keys)
 
         handlers = self._handlers.get(event.name, [])
