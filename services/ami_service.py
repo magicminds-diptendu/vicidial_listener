@@ -20,13 +20,11 @@ class AMIService:
 
         self.client.add_event_listener(self._dispatch)
 
-        future = self.client.login(
+        self.client.login(
             username=settings.AMI_USERNAME,
             secret=settings.AMI_PASSWORD,
         )
 
-        response = future.response
-        logger.info(response)
         logger.info(f"Connected to AMI ({settings.AMI_HOST}:{settings.AMI_PORT})")
 
 
@@ -61,10 +59,7 @@ class AMIService:
         """Dispatch incoming AMI events."""
 
         logger.info("=" * 50)
-        logger.info(type(event))
-        logger.info(dir(event))
         logger.info(event.name)
-        logger.info(event.keys.get("Privilege", ""))
         logger.info(event.keys)
 
         handlers = self._handlers.get(event.name, [])

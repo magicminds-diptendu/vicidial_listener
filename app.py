@@ -13,13 +13,12 @@ vicidial_service = VicidialService()
 
 @ami.on("FullyBooted")
 def boot(event):
-    logger.info("ASTERISK READY")
+    logger.info("Asterisk Ready")
 
 
 @ami.on("NewCallerid")
 def handle_new_call(event):
     logger.info("Incoming call")
-    logger.info(event.keys)
 
     try:
         channel = event.keys.get("Channel", "")
@@ -71,15 +70,9 @@ def handle_new_call(event):
         else:
             logger.info("Skipping VICIdial update. Customer not found.")
 
-
     except Exception as e:
         logger.exception("Customer API request failed")
 
-
-@ami.on("Hangup")
-def handle_hangup(event):
-    logger.info("Call Ended")
-    logger.info(event.keys)
 
 
 def shutdown(signum, frame):
