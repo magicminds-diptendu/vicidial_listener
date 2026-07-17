@@ -19,13 +19,13 @@ def boot(event):
 @ami.on("NewCallerid")
 def handle_new_call(event):
     event = dict(event)
-    
+
     logger.info("Incoming call")
     logger.info(event.keys)
 
     try:
-        channel = event.get("Channel", "")
-        phone = event.get("CallerIDNum", "")
+        channel = event.keys.get("Channel", "")
+        phone = event.keys.get("CallerIDNum", "")
 
         # Ignore VICIdial internal Local channels
         if channel.startswith("Local/"):
