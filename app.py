@@ -27,9 +27,12 @@ def handle_new_call(event):
         # Ignore VICIdial internal Local channels
         if channel.startswith("Local/"):
             return
-
         # Ignore non-numeric caller IDs
         if not phone.isdigit():
+            return
+        
+        # Ignore numbers like 0, 0000, 0000000000
+        if set(phone) == {"0"}:
             return
 
         logger.debug(f"Customer Phone: {phone}")
