@@ -1,5 +1,5 @@
 from collections import defaultdict
-from threading import Event, Thread
+from threading import Event
 from asterisk.ami import AMIClient
 from config.settings import settings
 from services.logger import logger

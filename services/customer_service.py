@@ -5,22 +5,24 @@ from config.settings import settings
 
 class CustomerService:
 
-    def get_customer(self, params):
-        logger.info("Calling Customer API")
+    def get_customer(self, phone):
+        logger.info(f"Calling Customer API for phone: {phone}")
 
         url = settings.API_BASE_URL
 
         response = requests.post(
             url,
-            json=params,
+            data={"phone": phone},
             headers={
-                "Content-Type": "application/json",
+                "Content-Type": "application/x-www-form-urlencoded",
             },
             timeout=10,
         )
 
         logger.info(f"Customer API Status: {response.status_code}")
 
-        response.raise_for_status()
+        if response.status_code != 200:
+            logger.info(f"No customer found for phone: {phone}")
+            return None
 
         return response.json()

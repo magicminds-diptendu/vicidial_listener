@@ -46,7 +46,44 @@ class VicidialService:
             affected = cursor.execute(query, params or ())
             return affected
 
+    def update_list(self, phone_number, **fields):
+        lead = self.execute_one(
+            """
+            SELECT lead_id
+            FROM vicidial_list
+            WHERE phone_number = %s
+            ORDER BY lead_id DESC
+            LIMIT 1
+            """,
+            (phone_number,),
+        )
+
+        if not lead:
+            logger.warning(f"No VICIdial lead found for {phone_number}")
+            return False
+
+        if not fields:
+            logger.warning("No fields provided to update.")
+            return False
+
+        lead_id = lead["lead_id"]
+
+        set_clause = ", ".join(f"{column}=%s" for column in fields.keys())
+        values = list(fields.values()) + [lead_id]
+
+        query = f"""
+            UPDATE vicidial_list
+            SET {set_clause}
+            WHERE lead_id = %s
+        """
+
+        self.update(query, values)
+
+        logger.info(f"Updated lead {lead_id} with fields: {list(fields.keys())}")
+        return True
+
     def close(self):
         if self.connection:
             self.connection.close()
+            self.connection = None
             logger.info("VICIdial database connection closed")
