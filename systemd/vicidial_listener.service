@@ -1,21 +1,28 @@
 [Unit]
-Description=Vicidial AMI Listener
-After=network.target mariadb.service
+Description=VICIdial AMI & Stream Controller Listener
+After=network-online.target mariadb.service asterisk.service
+Wants=network-online.target
 
 [Service]
 Type=simple
-
 User=root
 Group=root
 
 WorkingDirectory=/opt/vicidial_listener
-
 Environment=PYTHONUNBUFFERED=1
 
 ExecStart=/opt/vicidial_listener/venv/bin/python /opt/vicidial_listener/app.py
 
 Restart=always
-RestartSec=5
+RestartSec=3s
+StartLimitIntervalSec=60s
+StartLimitBurst=5
+
+LimitNOFILE=65535
+Nice=-5
+
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

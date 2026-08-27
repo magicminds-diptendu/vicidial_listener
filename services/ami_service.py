@@ -2,7 +2,7 @@ from collections import defaultdict
 from threading import Event
 from asterisk.ami import AMIClient
 from config.settings import settings
-from services.logger import logger
+from services.logger_service import logger
 
 
 class AMIService:

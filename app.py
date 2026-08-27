@@ -1,14 +1,16 @@
+from concurrent.futures import ThreadPoolExecutor
 import signal
 import sys
 
 from services.ami_service import AMIService
-from services.customer_service import CustomerService
-from services.vicidial_service import VicidialService
-from services.logger import logger
+from services.logger_service import logger
+from handlers.call_handlers import process_customer_lookup, process_bridge_start
 
+# Initialize AMI connection
 ami = AMIService()
-customer_service = CustomerService()
-vicidial_service = VicidialService()
+
+# High-concurrency worker thread pool (adjust workers based on server specs)
+executor = ThreadPoolExecutor(max_workers=50, thread_name_prefix="ami_worker")
 
 
 @ami.on("FullyBooted")
@@ -18,63 +20,27 @@ def boot(event):
 
 @ami.on("NewCallerid")
 def handle_new_call(event):
-    logger.debug("Incoming call")
+    """Triggered on incoming callers. Offloaded to worker pool."""
+    executor.submit(process_customer_lookup, event)
 
-    try:
-        channel = event.keys.get("Channel", "")
-        phone = event.keys.get("CallerIDNum", "")
 
-        # Ignore VICIdial internal Local channels
-        if channel.startswith("Local/"):
-            return
-        # Ignore non-numeric caller IDs
-        if not phone.isdigit():
-            return
-        
-        # Ignore numbers like 0, 0000, 0000000000
-        if set(phone) == {"0"}:
-            return
-
-        logger.debug(f"Customer Phone: {phone}")
-
-        customer = customer_service.get_customer(phone)
-
-        if customer:
-            comments = (
-                f"Email Address: {customer.get('email', '')}\n"
-                f"Bank Name: {customer.get('bank_name', '')}\n"
-                f"Phone Number: {customer.get('phone', '')}"
-            )
-
-            logger.debug(f"Customers Info: {comments}")
-
-            vicidial_service.update_list(
-                phone_number=phone,
-                email=customer.get("email"),
-                comments=comments,
-            )
-            logger.info(f"Customer Info Updated: {phone}")
-        else:
-            logger.info("Skipping VICIdial update. Customer not found.")
-
-    except Exception as e:
-        logger.exception("Customer API request failed")
-
+@ami.on("BridgeEnter")
+def handle_bridge_enter(event):
+    """Triggered when agent bridges with caller. Offloaded to worker pool."""
+    executor.submit(process_bridge_start, event, ami.client)
 
 
 def shutdown(signum, frame):
     logger.info("Shutdown signal received. Closing application...")
+
+    # Stop accepting new tasks and release threads
+    executor.shutdown(wait=False)
 
     try:
         # Close AMI connection
         ami.disconnect()
     except Exception:
         logger.exception("Error while stopping AMI")
-
-    try:
-        vicidial_service.close()
-    except Exception:
-        logger.exception("Error while closing VICIdial database")
 
     logger.info("Application stopped successfully.")
     sys.exit(0)

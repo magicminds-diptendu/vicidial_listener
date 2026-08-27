@@ -1,5 +1,5 @@
 import requests
-from services.logger import logger
+from services.logger_service import logger
 from config.settings import settings
 
 

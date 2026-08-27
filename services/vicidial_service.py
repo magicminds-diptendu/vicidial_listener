@@ -1,50 +1,56 @@
+from dbutils.pooled_db import PooledDB
 import pymysql
 from config.settings import settings
-from services.logger import logger
+from services.logger_service import logger
 
 
 class VicidialService:
     def __init__(self):
-        self.connection = None
+        self._pool = None
+        self._init_pool()
 
-    def connect(self):
-        """Create a database connection if needed."""
-        if self.connection and self.connection.open:
-            return
+    def _init_pool(self):
+        """Initialize thread-safe PyMySQL database connection pool."""
+        try:
+            self._pool = PooledDB(
+                creator=pymysql,
+                mincached=5,  # Minimum idle connections created at start
+                maxcached=20,  # Maximum idle connections kept in pool
+                maxconnections=50,  # Maximum connections allowed across all threads
+                blocking=True,  # Block threads if pool limit reached until connection frees
+                host=settings.VICIDIAL_DB_HOST,
+                port=settings.VICIDIAL_DB_PORT,
+                user=settings.VICIDIAL_DB_USER,
+                password=settings.VICIDIAL_DB_PASSWORD,
+                database=settings.VICIDIAL_DB_NAME,
+                charset="utf8mb4",
+                cursorclass=pymysql.cursors.DictCursor,
+                autocommit=True,
+            )
+            logger.info("Initialized VICIdial database connection pool")
+        except Exception:
+            logger.exception("Failed to initialize VICIdial DB connection pool")
 
-        self.connection = pymysql.connect(
-            host=settings.VICIDIAL_DB_HOST,
-            port=settings.VICIDIAL_DB_PORT,
-            user=settings.VICIDIAL_DB_USER,
-            password=settings.VICIDIAL_DB_PASSWORD,
-            database=settings.VICIDIAL_DB_NAME,
-            charset="utf8mb4",
-            cursorclass=pymysql.cursors.DictCursor,
-            autocommit=True,
-        )
-
-        logger.info("Connected to VICIdial database")
-
-    def execute(self, query, params=None):
-        self.connect()
-
-        with self.connection.cursor() as cursor:
-            cursor.execute(query, params or ())
-            return cursor.fetchall()
+    def _get_connection(self):
+        """Fetch a dedicated connection from the pool for the current thread."""
+        return self._pool.connection()
 
     def execute_one(self, query, params=None):
-        self.connect()
-
-        with self.connection.cursor() as cursor:
-            cursor.execute(query, params or ())
-            return cursor.fetchone()
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(query, params or ())
+                return cursor.fetchone()
+        finally:
+            conn.close()
 
     def update(self, query, params=None):
-        self.connect()
-
-        with self.connection.cursor() as cursor:
-            affected = cursor.execute(query, params or ())
-            return affected
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cursor:
+                return cursor.execute(query, params or ())
+        finally:
+            conn.close()
 
     def update_list(self, phone_number, **fields):
         lead = self.execute_one(
@@ -67,7 +73,6 @@ class VicidialService:
             return False
 
         lead_id = lead["lead_id"]
-
         set_clause = ", ".join(f"{column}=%s" for column in fields.keys())
         values = list(fields.values()) + [lead_id]
 
@@ -78,12 +83,12 @@ class VicidialService:
         """
 
         self.update(query, values)
-
         logger.debug(f"Updated lead {lead_id} with fields: {list(fields.keys())}")
         return True
 
     def close(self):
-        if self.connection:
-            self.connection.close()
-            self.connection = None
-            logger.info("VICIdial database connection closed")
+        """Close pool resources on shutdown."""
+        if self._pool:
+            self._pool.close()
+            self._pool = None
+            logger.debug("VICIdial database connection pool closed")
