@@ -5,7 +5,7 @@ import sys
 from services.ami_service import AMIService
 from services.logger_service import logger
 from handlers.customer_lookup_handler import process_customer_lookup
-from handlers.external_media_handler import process_bridge_start
+from handlers.external_media_handler import process_bridge_start, process_bridge_end
 
 # Initialize AMI connection
 ami = AMIService()
@@ -30,15 +30,13 @@ def handle_bridge_enter(event):
     """Triggered when agent bridges with caller. Offloaded to worker pool."""
     executor.submit(process_bridge_start, event, ami.client)
 
-@ami.on("MixMonitorStop")
-def handle_mixmonitor_stop(event):
-    """Triggered when MixMonitor finishes recording."""
-    pass
-    # local_path = event.keys.get("File")
-    # if local_path and os.path.exists(local_path):
-    #     filename = os.path.basename(local_path)
-    #     # Offload file upload to thread pool
-    #     executor.submit(upload_to_minio_and_cleanup, local_path, "vicidial-recordings", f"call_recordings/{filename}")
+@ami.on("BridgeLeave")
+def handle_bridge_leave(event):
+    executor.submit(process_bridge_end, event, ami.client)
+
+@ami.on("Hangup")
+def handle_hangup(event):
+    executor.submit(process_bridge_end, event, ami.client)
 
 
 def shutdown(signum, frame):

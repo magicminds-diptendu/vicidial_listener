@@ -5,7 +5,8 @@ from services.logger_service import logger
 
 # Address of Server 2 (STT & Deepgram Pipeline Node)
 STT_SERVER_IP = getattr(settings, "STT_SERVER_IP", "192.168.1.100")
-STT_METADATA_URL = f"http://{STT_SERVER_IP}:5000/session/init"
+STT_INIT_URL = f"http://{STT_SERVER_IP}:5000/session/init"
+STT_CLOSE_URL = f"http://{STT_SERVER_IP}:5000/session/close"
 
 # Asterisk ARI Configuration on Server 1 (Localhost)
 ARI_BASE_URL = getattr(settings, "ARI_BASE_URL", "http://127.0.0.1:8088/ari")
@@ -69,7 +70,7 @@ def process_bridge_start(event, ami_client):
         # 2. Register session metadata on Server 2 (Flask API)
         try:
             requests.post(
-                STT_METADATA_URL,
+                STT_INIT_URL,
                 json={"uniqueid": uniqueid, "metadata": metadata},
                 timeout=2
             )
@@ -112,3 +113,25 @@ def process_bridge_start(event, ami_client):
 
     except Exception:
         logger.exception("Failed in process_bridge_start execution")
+
+
+def process_bridge_end(event, ami_client):
+    """Worker Task: Triggered on BridgeLeave or Hangup -> Calls /session/close"""
+    try:
+        channel = event.keys.get("Channel", "")
+        if not channel or channel.startswith("Local/"):
+            return
+
+        uniqueid = event.keys.get("Uniqueid") or get_channel_var(ami_client, channel, "UNIQUEID")
+        if not uniqueid:
+            return
+
+        # TRIGGER /session/close ON SERVER 2
+        try:
+            requests.post(STT_CLOSE_URL, json={"uniqueid": uniqueid}, timeout=2)
+            logger.info(f"Closed session on Server 2 for UniqueID: {uniqueid}")
+        except Exception:
+            logger.exception("Failed to send /session/close to Server 2")
+
+    except Exception:
+        logger.exception("Failed in process_bridge_end execution")
