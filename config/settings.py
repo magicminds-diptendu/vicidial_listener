@@ -21,5 +21,12 @@ class Settings:
     API_BASE_URL = os.getenv("API_BASE_URL")
     API_TOKEN = os.getenv("API_TOKEN")
 
+    ARI_BASE_URL = os.getenv("ARI_BASE_URL")
+    ARI_USER = os.getenv("ARI_USER")
+    ARI_PASS = os.getenv("ARI_PASS")
+
+    STT_SERVER_IP = os.getenv('STT_SERVER_IP')
+    STT_METADATA_URL = os.getenv('STT_METADATA_URL')
+
 
 settings = Settings()
