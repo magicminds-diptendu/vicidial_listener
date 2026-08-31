@@ -1,5 +1,3 @@
-from asterisk.ami import SimpleAction
-from config.settings import settings
 from services.customer_service import CustomerService
 from services.logger_service import logger
 from services.vicidial_service import VicidialService

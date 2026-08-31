@@ -69,47 +69,177 @@ def process_bridge_start(event, ami_client):
 
         # 2. Register session metadata on Server 2 (Flask API)
         try:
-            requests.post(
+            response = requests.post(
                 STT_INIT_URL,
                 json={"uniqueid": uniqueid, "metadata": metadata},
                 timeout=2
             )
+
+            response.raise_for_status()
+
             logger.debug(f"Pushed session metadata to STT Server: {uniqueid}")
         except Exception:
             logger.exception("Failed to connect to Server 2 STT Metadata API")
 
         # 3. Request External Media for Customer (RTP -> Server 2 Port 20000)
-        requests.post(
+        customer_external_response = requests.post(
             f"{ARI_BASE_URL}/channels/externalMedia",
-            params={"app": "deepgram_bridge", "external_host": f"{STT_SERVER_IP}:20000", "format": "slin16"},
+            params={"app": "stt_service", "external_host": f"{STT_SERVER_IP}:20000", "format": "slin16"},
             auth=ARI_AUTH,
             timeout=2
         )
+
+        customer_external_response.raise_for_status()
+        customer_external = customer_external_response.json()
+        customer_external_id = customer_external.get("id")
+
+        if not customer_external_id:
+            raise RuntimeError(
+                "ARI did not return customer ExternalMedia channel ID"
+            )
+
+        logger.info(f"Customer ExternalMedia created: {customer_external_id} -> {STT_SERVER_IP}:20000")
 
         # 4. Request External Media for Agent (RTP -> Server 2 Port 20002)
-        requests.post(
+        agent_external_response = requests.post(
             f"{ARI_BASE_URL}/channels/externalMedia",
-            params={"app": "deepgram_bridge", "external_host": f"{STT_SERVER_IP}:20002", "format": "slin16"},
+            params={"app": "stt_service", "external_host": f"{STT_SERVER_IP}:20002", "format": "slin16"},
             auth=ARI_AUTH,
             timeout=2
         )
+
+        agent_external_response.raise_for_status()
+        agent_external = agent_external_response.json()
+        agent_external_id = agent_external.get("id")
+
+        if not agent_external_id:
+            raise RuntimeError(
+                "ARI did not return agent ExternalMedia channel ID"
+            )
+
+        logger.info(f"Agent ExternalMedia created: {agent_external_id} -> {STT_SERVER_IP}:20002")
 
         # 5. Attach Snoop channels in Asterisk to route audio into External Media
-        requests.post(
+        customer_snoop_response = requests.post(
             f"{ARI_BASE_URL}/channels/{channel_cust}/snoop",
-            params={"app": "deepgram_bridge", "spy": "in", "snoop_id": f"snoop_cust_{uniqueid}"},
+            params={"app": "stt_service", "spy": "in", "snoop_id": f"snoop_cust_{uniqueid}"},
             auth=ARI_AUTH,
             timeout=2
         )
 
-        requests.post(
+        customer_snoop_response.raise_for_status()
+        customer_snoop = customer_snoop_response.json()
+        customer_snoop_id = customer_snoop.get("id")
+
+        if not customer_snoop_id:
+            raise RuntimeError(
+                "ARI did not return customer Snoop channel ID"
+            )
+
+        logger.info(f"Customer Snoop created: {customer_snoop_id}")
+
+        agent_snoop_response = requests.post(
             f"{ARI_BASE_URL}/channels/{channel_agent}/snoop",
-            params={"app": "deepgram_bridge", "spy": "out", "snoop_id": f"snoop_agent_{uniqueid}"},
+            params={"app": "stt_service", "spy": "out", "snoop_id": f"snoop_agent_{uniqueid}"},
             auth=ARI_AUTH,
             timeout=2
         )
 
-        logger.info(f"Successfully initiated external media streams to Server 2 ({STT_SERVER_IP}) for call {uniqueid}")
+        agent_snoop_response.raise_for_status()
+        agent_snoop = agent_snoop_response.json()
+        agent_snoop_id = agent_snoop.get("id")
+
+        if not agent_snoop_id:
+            raise RuntimeError(
+                "ARI did not return agent Snoop channel ID"
+            )
+
+        logger.info(f"Agent Snoop created: {agent_snoop_id}")
+
+        # Create CUSTOMER bridge
+        customer_bridge_response = requests.post(
+            f"{ARI_BASE_URL}/bridges",
+            params={"type": "mixing", "name": f"stt_cust_bridge_{uniqueid}"},
+            auth=ARI_AUTH,
+            timeout=2
+        )
+
+        customer_bridge_response.raise_for_status()
+        customer_bridge = customer_bridge_response.json()
+        customer_bridge_id = customer_bridge.get("id")
+
+        if not customer_bridge_id:
+            raise RuntimeError(
+                "ARI did not return customer bridge ID"
+            )
+
+        # Add CUSTOMER Snoop + ExternalMedia to bridge
+        requests.post(
+            f"{ARI_BASE_URL}/bridges/{customer_bridge_id}/addChannel",
+            params={
+                "channel": (
+                    f"{customer_snoop_id},"
+                    f"{customer_external_id}"
+                )
+            },
+            auth=ARI_AUTH,
+            timeout=2
+        ).raise_for_status()
+
+        logger.info(
+            f"Customer media bridge connected: "
+            f"Snoop={customer_snoop_id} "
+            f"ExternalMedia={customer_external_id}"
+        )
+
+        # Create AGENT bridge
+        agent_bridge_response = requests.post(
+            f"{ARI_BASE_URL}/bridges",
+            params={"type": "mixing", "name": f"stt_agent_bridge_{uniqueid}"},
+            auth=ARI_AUTH,
+            timeout=2
+        )
+
+        agent_bridge_response.raise_for_status()
+        agent_bridge = agent_bridge_response.json()
+        agent_bridge_id = agent_bridge.get("id")
+
+        if not agent_bridge_id:
+            raise RuntimeError(
+                "ARI did not return agent bridge ID"
+            )
+
+        # Add AGENT Snoop + ExternalMedia to bridge
+        requests.post(
+            f"{ARI_BASE_URL}/bridges/{agent_bridge_id}/addChannel",
+            params={
+                "channel": (
+                    f"{agent_snoop_id},"
+                    f"{agent_external_id}"
+                )
+            },
+            auth=ARI_AUTH,
+            timeout=2
+        ).raise_for_status()
+
+        logger.info(
+            f"Agent media bridge connected: "
+            f"Snoop={agent_snoop_id} "
+            f"ExternalMedia={agent_external_id}"
+        )
+
+
+        logger.info(
+            f"STT media pipeline started for {uniqueid}: "
+            f"customer={channel_cust} "
+            f"-> snoop={customer_snoop_id} "
+            f"-> external={customer_external_id} "
+            f"-> {STT_SERVER_IP}:20000 | "
+            f"agent={channel_agent} "
+            f"-> snoop={agent_snoop_id} "
+            f"-> external={agent_external_id} "
+            f"-> {STT_SERVER_IP}:20002"
+        )
 
     except Exception:
         logger.exception("Failed in process_bridge_start execution")
