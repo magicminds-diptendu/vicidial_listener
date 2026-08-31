@@ -15,6 +15,9 @@ ARI_AUTH = (
     getattr(settings, "ARI_PASS", "your_secure_ari_password")
 )
 
+# Prevent duplicate STT initialization for the same call. 
+active_stt_calls = set()
+
 
 def get_channel_var(ami_client, channel_name, variable_name):
     """Utility function to safely execute AMI GetVar using SimpleAction."""
@@ -66,6 +69,12 @@ def process_bridge_start(event, ami_client):
             return
 
         logger.info(f"ViciDial Metadata Captured: {metadata}")
+        
+        if uniqueid in active_stt_calls: 
+            logger.debug( f"STT already initialized for {uniqueid}. Ignoring duplicate BridgeEnter." ) 
+            return 
+        
+        active_stt_calls.add(uniqueid)
 
         # 2. Register session metadata on Server 2 (Flask API)
         try:
@@ -79,7 +88,9 @@ def process_bridge_start(event, ami_client):
 
             logger.debug(f"Pushed session metadata to STT Server: {uniqueid}")
         except Exception:
+            active_stt_calls.discard(uniqueid)
             logger.exception("Failed to connect to Server 2 STT Metadata API")
+            return
 
         # 3. Request External Media for Customer (RTP -> Server 2 Port 20000)
         customer_external_response = requests.post(
@@ -156,78 +167,6 @@ def process_bridge_start(event, ami_client):
 
         logger.info(f"Agent Snoop created: {agent_snoop_id}")
 
-        # Create CUSTOMER bridge
-        customer_bridge_response = requests.post(
-            f"{ARI_BASE_URL}/bridges",
-            params={"type": "mixing", "name": f"stt_cust_bridge_{uniqueid}"},
-            auth=ARI_AUTH,
-            timeout=2
-        )
-
-        customer_bridge_response.raise_for_status()
-        customer_bridge = customer_bridge_response.json()
-        customer_bridge_id = customer_bridge.get("id")
-
-        if not customer_bridge_id:
-            raise RuntimeError(
-                "ARI did not return customer bridge ID"
-            )
-
-        # Add CUSTOMER Snoop + ExternalMedia to bridge
-        requests.post(
-            f"{ARI_BASE_URL}/bridges/{customer_bridge_id}/addChannel",
-            params={
-                "channel": (
-                    f"{customer_snoop_id},"
-                    f"{customer_external_id}"
-                )
-            },
-            auth=ARI_AUTH,
-            timeout=2
-        ).raise_for_status()
-
-        logger.info(
-            f"Customer media bridge connected: "
-            f"Snoop={customer_snoop_id} "
-            f"ExternalMedia={customer_external_id}"
-        )
-
-        # Create AGENT bridge
-        agent_bridge_response = requests.post(
-            f"{ARI_BASE_URL}/bridges",
-            params={"type": "mixing", "name": f"stt_agent_bridge_{uniqueid}"},
-            auth=ARI_AUTH,
-            timeout=2
-        )
-
-        agent_bridge_response.raise_for_status()
-        agent_bridge = agent_bridge_response.json()
-        agent_bridge_id = agent_bridge.get("id")
-
-        if not agent_bridge_id:
-            raise RuntimeError(
-                "ARI did not return agent bridge ID"
-            )
-
-        # Add AGENT Snoop + ExternalMedia to bridge
-        requests.post(
-            f"{ARI_BASE_URL}/bridges/{agent_bridge_id}/addChannel",
-            params={
-                "channel": (
-                    f"{agent_snoop_id},"
-                    f"{agent_external_id}"
-                )
-            },
-            auth=ARI_AUTH,
-            timeout=2
-        ).raise_for_status()
-
-        logger.info(
-            f"Agent media bridge connected: "
-            f"Snoop={agent_snoop_id} "
-            f"ExternalMedia={agent_external_id}"
-        )
-
 
         logger.info(
             f"STT media pipeline started for {uniqueid}: "
@@ -243,6 +182,15 @@ def process_bridge_start(event, ami_client):
 
     except Exception:
         logger.exception("Failed in process_bridge_start execution")
+        
+        # If we know the uniqueid, allow a future BridgeEnter 
+        # to retry initialization. 
+        try: 
+            if uniqueid: 
+                active_stt_calls.discard(uniqueid) 
+                
+        except UnboundLocalError: 
+            pass
 
 
 def process_bridge_end(event, ami_client):
