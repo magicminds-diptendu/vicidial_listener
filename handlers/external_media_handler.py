@@ -11,7 +11,7 @@ STT_CLOSE_URL = f"http://{STT_SERVER_IP}:5000/session/close"
 # Asterisk ARI Configuration on Server 1 (Localhost)
 ARI_BASE_URL = getattr(settings, "ARI_BASE_URL", "http://127.0.0.1:8088/ari")
 ARI_AUTH = (
-    getattr(settings, "ARI_USER", "deepgram_bridge"),
+    getattr(settings, "ARI_USER", "stt_service"),
     getattr(settings, "ARI_PASS", "your_secure_ari_password")
 )
 

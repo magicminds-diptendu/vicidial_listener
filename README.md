@@ -121,7 +121,6 @@ VICIDIAL_DB_PASSWORD=1234
 
 # Backend API
 API_BASE_URL=http://127.0.0.1:3000/api
-API_TOKEN=your_api_token
 ```
 
 ---
