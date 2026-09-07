@@ -1,107 +1,175 @@
-# VICIdial Listener
+# VICIdial Listener & ARI Speech-to-Text (STT) Bridge
 
-A lightweight Python service that listens to **Asterisk AMI events**, retrieves customer information from your backend API, and updates VICIdial lead information in real time.
+A lightweight Python service that listens to Asterisk AMI events, retrieves VICIdial lead information, and updates VICIdial lead details or dynamically streams call audio to an external Speech-to-Text (STT) pipeline using Asterisk ARI Snoop and External Media.
 
 ## Features
 
-- Listen to Asterisk AMI events
-- Event-driven architecture using decorators
-- Customer lookup via backend API
-- Update customer details in VICIdial
-- MySQL/MariaDB integration
-- Environment-based configuration
-- Systemd service support
-- Logging
-- Easy deployment after VICIdial reinstallation
+* **AMI Event Monitoring:** Listens for active call bridge events (`BridgeEnter`, `BridgeLeave`, `Hangup`, `NewCallerid`).
+* **Real-Time Audio Snooping:** Streams customer (`spy=in`) and agent (`spy=out`) audio separately to an external STT server via Asterisk ARI External Media.
+* **Customer Lookup & Lead Update:** Connects to backend APIs and VICIdial MySQL/MariaDB databases to update lead metadata on the fly.
+* **Modular Handlers:** Clean, event-driven architecture separating customer lookup workflows from ARI media streaming handlers.
+* **Systemd Integration:** Pre-configured system daemon file for automatic boot-up and production persistence.
+
+- *Environment-based configuration*
+- *Systemd service support*
+- *Logging*
+- *Easy deployment after VICIdial reinstallation*
 
 ---
 
-# Project Structure
+## Project Structure
 
 ```
 vicidial_listener/
 │
-├── app.py                     # Application entry point
-├── requirements.txt
-├── README.md
-├── .env
-├── .env.example
-├── .gitignore
-│
+├── .vscode/
 ├── config/
+│   └── settings.py            # Loads configuration from .env
+│
+├── handlers/                  # Event-driven worker logic
 │   ├── __init__.py
-│   └── settings.py            # Environment configuration
+│   ├── customer_lookup_handler.py  # Handles API lookups & DB updates
+│   └── external_media_handler.py   # Handles ARI Snoop & External Media
 │
-├── services/
+├── logs/                      # Log storage directory
+│
+├── services/                  # Core integration clients
 │   ├── __init__.py
-│   ├── ami_service.py         # Asterisk AMI listener
-│   ├── customer_service.py    # Backend API integration
-│   ├── vicidial_service.py    # VICIdial database operations
-│   └── logger.py              # Logging configuration
-│
-├── logs/
-│   └── listener.log
-│
-├── tests/
+│   ├── ami_service.py         # Asterisk AMI connection manager
+│   ├── customer_service.py    # Backend API client
+│   ├── logger_service.py      # Structured logger configuration
+│   └── vicidial_service.py    # VICIdial DB/MySQL operations
 │
 ├── systemd/
-│   └── vicidial_listener.service
+│   └── vicidial_listener.service  # Systemd service unit configuration
 │
-└── venv/
+├── tests/                     # Unit & integration tests
+├── venv/                      # Python virtual environment
+│
+├── .env                       # Active environment variables (Git ignored)
+├── .env.example               # Environment template
+├── .gitignore
+├── .python-version
+├── app.py                     # Main application entry point
+├── ARCHITECTURE.md            # Technical architecture documentation
+├── README.md                  # Project documentation
+└── requirements.txt           # Python dependencies
 ```
 
 ---
 
-# Requirements
+## Requirements & Prerequisites
 
-- Python 3.6+
-- VICIdial
-- Asterisk AMI
-- MariaDB/MySQL
+* **Python:** 3.6+
+* **Asterisk:** Version 16+
+* **Asterisk Modules Required on Server 1:**
+* `res_ari.so`
+* `res_ari_channels.so`
+* `res_ari_applications.so`
+* `app_chanspy.so`
 
 ---
 
-# Installation
+## Server Configuration
 
-Clone the project
+### 1. `/etc/asterisk/ari.conf`
 
+```ini
+[general]
+enabled = yes
+pretty = yes
+
+[stt_service]
+type = user
+read_only = no
+password = your_secure_ari_password
+password_format = plain
+
+```
+
+### 2. `/etc/asterisk/http.conf`
+
+```ini
+[general]
+enabled = yes
+bindaddr = 127.0.0.1
+bindport = 8088
+
+```
+
+---
+
+## Useful VICIdial Configuration Files
+
+### AMI
+
+```text
+/etc/asterisk/manager.conf
+
+```
+
+Recommended AMI user:
+
+```text
+listencron
+
+```
+
+---
+
+### Database
+
+```text
+/etc/astguiclient.conf
+
+```
+
+Recommended database user:
+
+```text
+cron
+
+```
+
+
+## Installation
+
+1. **Clone the repository:**
 ```bash
 cd /opt
-
 git clone <repository-url> vicidial_listener
-
 cd vicidial_listener
+
 ```
 
----
 
-## Create Virtual Environment
-
+2. **Create and activate virtual environment:**
 ```bash
 python3 -m venv venv
-```
-
-Activate
-
-```bash
 source venv/bin/activate
+
 ```
 
----
 
-## Install Dependencies
-
+3. **Install dependencies:**
 ```bash
 pip install -r requirements.txt
+
 ```
+
 
 ---
 
-# Configuration
+## Environment Configuration
 
-Create a `.env` file.
+Copy `.env.example` to `.env` and adjust your variables:
 
-Example:
+```bash
+cp .env.example .env
+
+```
+
+**`.env` Configuration File:**
 
 ```env
 LOG_LEVEL=INFO
@@ -109,8 +177,8 @@ LOG_LEVEL=INFO
 # Asterisk AMI
 AMI_HOST=127.0.0.1
 AMI_PORT=5038
-AMI_USERNAME=listencron
-AMI_PASSWORD=1234
+AMI_USERNAME=admin
+AMI_PASSWORD=password
 
 # VICIdial Database
 VICIDIAL_DB_HOST=127.0.0.1
@@ -120,12 +188,21 @@ VICIDIAL_DB_USER=cron
 VICIDIAL_DB_PASSWORD=1234
 
 # Backend API
-API_BASE_URL=http://127.0.0.1:3000/api
+API_BASE_URL=http://localhost:3000/api
+
+# Asterisk ARI Configuration
+ARI_BASE_URL=http://127.0.0.1:8088/ari
+ARI_USER=stt_service
+ARI_PASS=your_secure_ari_password
+
+# STT Processing Server
+STT_SERVER_IP=192.168.1.100
+
 ```
 
 ---
 
-# Running the Application
+## Running the Application
 
 Activate virtual environment
 
@@ -141,165 +218,50 @@ python app.py
 
 ---
 
-# Development
-
-Start development
+### Development Mode
 
 ```bash
 cd /opt/vicidial_listener
-
 source venv/bin/activate
-
 python app.py
+
 ```
 
 ---
 
-# AMI Event Handlers
+### Production Mode (Systemd Service)
 
-Register events using decorators.
-
-```python
-from services.ami_service import AMIService
-
-ami = AMIService()
-
-
-@ami.on("NewCallerid")
-def handle_new_call(event):
-    print(event.keys)
-
-
-@ami.on("Newstate")
-def handle_new_state(event):
-    print(event.keys)
-
-
-@ami.on("Hangup")
-def handle_hangup(event):
-    print(event.keys)
-
-
-if __name__ == "__main__":
-    ami.start()
-```
-
----
-
-# Customer Lookup Flow
-
-```
-Incoming Call
-      │
-      ▼
-Asterisk AMI
-      │
-      ▼
-NewCallerid Event
-      │
-      ▼
-Backend API Lookup
-      │
-      ▼
-Customer Found
-      │
-      ▼
-Update VICIdial Lead
-      │
-      ▼
-Agent Receives Customer Information
-```
-
----
-
-# Logging
-
-Logs are stored in
-
-```
-logs/listener.log
-```
-
----
-
-# Systemd Service
-
-Copy the service file
-
+**Copy the systemd unit file:**
 ```bash
 sudo cp systemd/vicidial_listener.service /etc/systemd/system/
+
 ```
 
-Reload systemd
-
+**Enable and start the service:**
 ```bash
 sudo systemctl daemon-reload
-```
-
-Enable service
-
-```bash
 sudo systemctl enable vicidial_listener
-```
-
-Start service
-
-```bash
 sudo systemctl start vicidial_listener
+
 ```
 
-Restart
-
+**Restart and status the service:**
 ```bash
 sudo systemctl restart vicidial_listener
-```
-
-Check status
-
-```bash
 sudo systemctl status vicidial_listener
+
 ```
 
-View logs
-
+**Monitor logs:**
 ```bash
 journalctl -u vicidial_listener -f
+
 ```
 
 or
 
 ```bash
 tail -f logs/listener.log
-```
-
----
-
-# Useful VICIdial Configuration Files
-
-### AMI
-
-```
-/etc/asterisk/manager.conf
-```
-
-Recommended AMI user
-
-```
-listencron
-```
-
----
-
-### Database
-
-```
-/etc/astguiclient.conf
-```
-
-Recommended database user
-
-```
-cron
 ```
 
 ---
