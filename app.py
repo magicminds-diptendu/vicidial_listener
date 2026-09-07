@@ -28,14 +28,17 @@ def handle_new_call(event):
 @ami.on("BridgeEnter")
 def handle_bridge_enter(event):
     """Triggered when agent bridges with caller. Offloaded to worker pool."""
+    logger.debug("BridgeEnter", extra={"event": event})
     executor.submit(process_bridge_start, event, ami.client)
 
 @ami.on("BridgeLeave")
 def handle_bridge_leave(event):
+    logger.debug("BridgeLeave", extra={"event": event}) 
     executor.submit(process_bridge_end, event, ami.client)
 
 @ami.on("Hangup")
 def handle_hangup(event):
+    logger.debug("Hangup", extra={"event": event})
     executor.submit(process_bridge_end, event, ami.client)
 
 
