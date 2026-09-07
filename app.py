@@ -14,6 +14,11 @@ ami = AMIService()
 executor = ThreadPoolExecutor(max_workers=50, thread_name_prefix="ami_worker")
 
 
+def is_internal_channel(channel: str, caller_id_num: str, caller_id_name: str) -> bool:
+    """Helper to identify non-customer internal channels and VICIdial ding sounds."""
+    return "Local/" in channel or caller_id_num == "ding" or caller_id_name == "ding"
+
+
 @ami.on("FullyBooted")
 def boot(event):
     logger.debug("Asterisk Ready")
@@ -25,20 +30,53 @@ def handle_new_call(event):
     executor.submit(process_customer_lookup, event)
 
 
-@ami.on("BridgeEnter")
-def handle_bridge_enter(event):
-    """Triggered when agent bridges with caller. Offloaded to worker pool."""
-    logger.debug("BridgeEnter", extra={"event": event})
+@ami.on("MeetmeJoin")
+def handle_meetme_join(event):
+    channel = event.keys.get("Channel", "")
+    caller_id_num = event.keys.get("CallerIDNum", "")
+    caller_id_name = event.keys.get("CallerIDName", "")
+    meetme_room = event.keys.get("Meetme", "")
+
+    # 1. Ignore internal audio and local channels
+    if is_internal_channel(channel, caller_id_num, caller_id_name):
+        logger.debug(f"Ignoring internal join channel: {channel}")
+        return
+
+    # 2. Identify Agent vs Customer
+    if channel.startswith("SIP/") and not channel.startswith("SIP/ATnT"):
+        logger.info(f"Agent joined room {meetme_room}: Channel={channel}")
+        return
+
+    # 3. Process Customer Connection
+    logger.info(f"Customer joined room {meetme_room}: Channel={channel}, Phone={caller_id_num}")
     executor.submit(process_bridge_start, event, ami.client)
 
-@ami.on("BridgeLeave")
-def handle_bridge_leave(event):
-    logger.debug("BridgeLeave", extra={"event": event}) 
+
+@ami.on("MeetmeLeave")
+def handle_meetme_leave(event):
+    channel = event.keys.get("Channel", "")
+    caller_id_num = event.keys.get("CallerIDNum", "")
+    caller_id_name = event.keys.get("CallerIDName", "")
+    meetme_room = event.keys.get("Meetme", "")
+
+    # 1. Ignore internal audio and local channels
+    if is_internal_channel(channel, caller_id_num, caller_id_name):
+        logger.debug(f"Ignoring internal leave channel: {channel}")
+        return
+
+    # 2. Identify Agent vs Customer
+    if channel.startswith("SIP/") and not channel.startswith("SIP/ATnT"):
+        logger.info(f"Agent left room {meetme_room}: Channel={channel}")
+        return
+
+    # 3. Process Customer Disconnection
+    logger.info(f"Customer left room {meetme_room}: Channel={channel}")
     executor.submit(process_bridge_end, event, ami.client)
+
 
 @ami.on("Hangup")
 def handle_hangup(event):
-    logger.debug("Hangup", extra={"event": event})
+    logger.debug("Hangup detected", extra={"event": event})
     executor.submit(process_bridge_end, event, ami.client)
 
 
