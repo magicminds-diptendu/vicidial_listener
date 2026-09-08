@@ -21,8 +21,8 @@ class ARIService:
         self.stt_server_ip = getattr(settings, "STT_SERVER_IP", "127.0.0.1")
         
         # STT Webhook URLs
-        self.stt_init_url = getattr(settings, "STT_INIT_URL", f"http://{self.stt_server_ip}:8000/session/init")
-        self.stt_close_url = getattr(settings, "STT_CLOSE_URL", f"http://{self.stt_server_ip}:8000/session/close")
+        self.stt_init_url = getattr(settings, "STT_INIT_URL", f"http://{self.stt_server_ip}:5000/session/init")
+        self.stt_close_url = getattr(settings, "STT_CLOSE_URL", f"http://{self.stt_server_ip}:5000/session/close")
         
         self.udp_customer_port = getattr(settings, "UDP_CUSTOMER_PORT", 20000)
         self.udp_agent_port = getattr(settings, "UDP_AGENT_PORT", 20002)
