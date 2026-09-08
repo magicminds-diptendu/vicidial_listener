@@ -3,24 +3,21 @@ from asterisk.ami import SimpleAction
 from config.settings import settings
 from services.logger_service import logger
 
-# Address of Server 2 (STT & Deepgram Pipeline Node)
 STT_SERVER_IP = getattr(settings, "STT_SERVER_IP", "192.168.1.100")
 STT_INIT_URL = f"http://{STT_SERVER_IP}:5000/session/init"
 STT_CLOSE_URL = f"http://{STT_SERVER_IP}:5000/session/close"
 
-# Asterisk ARI Configuration on Server 1 (Localhost)
 ARI_BASE_URL = getattr(settings, "ARI_BASE_URL", "http://127.0.0.1:8088/ari")
 ARI_AUTH = (
     getattr(settings, "ARI_USER", "stt_service"),
     getattr(settings, "ARI_PASS", "your_secure_ari_password")
 )
 
-# Prevent duplicate STT initialization for the same call. 
-active_stt_calls = set()
+active_stt_channels = set()
 
 
 def get_channel_var(ami_client, channel_name, variable_name):
-    """Utility function to safely execute AMI GetVar using SimpleAction."""
+    """Safely fetch channel variable using AMI GetVar."""
     try:
         action = SimpleAction('GetVar', Channel=channel_name, Variable=variable_name)
         response = ami_client.send_action(action)
@@ -31,185 +28,118 @@ def get_channel_var(ami_client, channel_name, variable_name):
     return None
 
 
-def fetch_vicidial_metadata(ami_client, channel_name):
-    """Fetches ViciDial lead and campaign metadata from the customer channel."""
-    lead_id = get_channel_var(ami_client, channel_name, "VNDR_LEAD_ID") or get_channel_var(ami_client, channel_name, "lead_id")
-    vendor_code = get_channel_var(ami_client, channel_name, "vendor_lead_code")
-    campaign_id = get_channel_var(ami_client, channel_name, "CAMPAIGN")
-    phone_number = get_channel_var(ami_client, channel_name, "phone_number")
-    uniqueid = get_channel_var(ami_client, channel_name, "UNIQUEID")
+def fetch_vicidial_metadata(ami_client, channel_name, event):
+    """Fetches ViciDial lead and campaign metadata using event keys and channel memory."""
+    caller_id_name = event.keys.get("CallerIDName", "")
+    lead_id = None
+    if caller_id_name.startswith("Y") and len(caller_id_name) >= 10:
+        lead_id = caller_id_name[1:10].lstrip("0")
+
+    if not lead_id:
+        lead_id = get_channel_var(ami_client, channel_name, "VNDR_LEAD_ID") or get_channel_var(ami_client, channel_name, "lead_id")
 
     return {
         "lead_id": lead_id,
-        "vendor_lead_code": vendor_code,
-        "campaign_id": campaign_id,
-        "phone_number": phone_number,
-        "uniqueid": uniqueid
+        "vendor_lead_code": get_channel_var(ami_client, channel_name, "vendor_lead_code"),
+        "campaign_id": get_channel_var(ami_client, channel_name, "CAMPAIGN"),
+        "phone_number": event.keys.get("CallerIDNum") or get_channel_var(ami_client, channel_name, "phone_number"),
+        "uniqueid": event.keys.get("Uniqueid") or get_channel_var(ami_client, channel_name, "UNIQUEID"),
+        "meetme_room": event.keys.get("Meetme", "")
     }
 
 
+def setup_single_channel_stream(channel_id, target_port, role, uniqueid):
+    """Helper to Snoop a specific channel and route its audio to a dedicated RTP port."""
+    # 1. Create ExternalMedia Channel pointing to target port
+    ext_res = requests.post(
+        f"{ARI_BASE_URL}/channels/externalMedia",
+        params={"app": "stt_service", "external_host": f"{STT_SERVER_IP}:{target_port}", "format": "slin16"},
+        auth=ARI_AUTH,
+        timeout=2
+    )
+    ext_res.raise_for_status()
+    ext_id = ext_res.json().get("id")
+
+    # 2. Snoop the channel (spy="in" captures only what this specific channel speaks)
+    snoop_res = requests.post(
+        f"{ARI_BASE_URL}/channels/{channel_id}/snoop",
+        params={"app": "stt_service", "spy": "in", "snoop_id": f"snoop_{role}_{uniqueid}"},
+        auth=ARI_AUTH,
+        timeout=2
+    )
+    snoop_res.raise_for_status()
+    snoop_id = snoop_res.json().get("id")
+
+    # 3. Create mixing bridge to link Snoop and ExternalMedia
+    bridge_res = requests.post(
+        f"{ARI_BASE_URL}/bridges",
+        params={"app": "stt_service", "type": "mixing", "name": f"bridge_{role}_{uniqueid}"},
+        auth=ARI_AUTH,
+        timeout=2
+    )
+    bridge_res.raise_for_status()
+    bridge_id = bridge_res.json().get("id")
+
+    # 4. Join Snoop and ExternalMedia
+    requests.post(
+        f"{ARI_BASE_URL}/bridges/{bridge_id}/addChannel",
+        params={"channel": f"{snoop_id},{ext_id}"},
+        auth=ARI_AUTH,
+        timeout=2
+    ).raise_for_status()
+
+    logger.info(f"Started {role.upper()} audio stream for {uniqueid} on Port {target_port} (Channel: {channel_id})")
+
+
 def process_bridge_start(event, ami_client):
-    """Worker task: Captures bridged call metadata and triggers media export to Server 2."""
+    """Handles channel media startup for both Agent and Customer individually."""
+    channel = event.keys.get("Channel", "")
+    if not channel or "Local/" in channel:
+        return
+
+    metadata = fetch_vicidial_metadata(ami_client, channel, event)
+    uniqueid = metadata.get("uniqueid")
+
+    if not uniqueid or uniqueid in active_stt_channels:
+        return
+
+    active_stt_channels.add(uniqueid)
+
+    # Determine if channel is Agent or Customer
+    is_customer = channel.startswith("SIP/ATnT")  # Match customer trunk prefix
+    target_port = 20000 if is_customer else 20002
+    role = "customer" if is_customer else "agent"
+
     try:
-        channel_cust = event.keys.get("Channel", "")
-        channel_agent = event.keys.get("DestinationChannel", "") or event.keys.get("ConnectedLineNum", "")
-
-        # Filter out non-SIP channels or internal ViciDial dummy calls
-        if not channel_cust or channel_cust.startswith("Local/"):
-            return
-
-        logger.info(f"Processing Bridge Start: Customer ({channel_cust}) <-> Agent ({channel_agent})")
-
-        # 1. Pull ViciDial metadata from channel memory
-        metadata = fetch_vicidial_metadata(ami_client, channel_cust)
-        uniqueid = metadata.get("uniqueid")
-
-        if not uniqueid:
-            logger.warning(f"Could not retrieve UNIQUEID for channel {channel_cust}. Skipping STT.")
-            return
-
-        logger.info(f"ViciDial Metadata Captured: {metadata}")
-        
-        if uniqueid in active_stt_calls: 
-            logger.debug( f"STT already initialized for {uniqueid}. Ignoring duplicate BridgeEnter." ) 
-            return 
-        
-        active_stt_calls.add(uniqueid)
-
-        # 2. Register session metadata on Server 2 (Flask API)
+        # Notify STT Server on First Connection
         try:
-            response = requests.post(
-                STT_INIT_URL,
-                json={"uniqueid": uniqueid, "metadata": metadata},
-                timeout=2
-            )
-
-            response.raise_for_status()
-
-            logger.debug(f"Pushed session metadata to STT Server: {uniqueid}")
+            requests.post(STT_INIT_URL, json={"uniqueid": uniqueid, "role": role, "metadata": metadata}, timeout=2)
         except Exception:
-            active_stt_calls.discard(uniqueid)
-            logger.exception("Failed to connect to Server 2 STT Metadata API")
-            return
+            logger.exception("Failed to send session init to STT Server")
 
-        # 3. Request External Media for Customer (RTP -> Server 2 Port 20000)
-        customer_external_response = requests.post(
-            f"{ARI_BASE_URL}/channels/externalMedia",
-            params={"app": "stt_service", "external_host": f"{STT_SERVER_IP}:20000", "format": "slin16"},
-            auth=ARI_AUTH,
-            timeout=2
-        )
-
-        customer_external_response.raise_for_status()
-        customer_external = customer_external_response.json()
-        customer_external_id = customer_external.get("id")
-
-        if not customer_external_id:
-            raise RuntimeError(
-                "ARI did not return customer ExternalMedia channel ID"
-            )
-
-        logger.info(f"Customer ExternalMedia created: {customer_external_id} -> {STT_SERVER_IP}:20000")
-
-        # 4. Request External Media for Agent (RTP -> Server 2 Port 20002)
-        agent_external_response = requests.post(
-            f"{ARI_BASE_URL}/channels/externalMedia",
-            params={"app": "stt_service", "external_host": f"{STT_SERVER_IP}:20002", "format": "slin16"},
-            auth=ARI_AUTH,
-            timeout=2
-        )
-
-        agent_external_response.raise_for_status()
-        agent_external = agent_external_response.json()
-        agent_external_id = agent_external.get("id")
-
-        if not agent_external_id:
-            raise RuntimeError(
-                "ARI did not return agent ExternalMedia channel ID"
-            )
-
-        logger.info(f"Agent ExternalMedia created: {agent_external_id} -> {STT_SERVER_IP}:20002")
-
-        # 5. Attach Snoop channels in Asterisk to route audio into External Media
-        customer_snoop_response = requests.post(
-            f"{ARI_BASE_URL}/channels/{channel_cust}/snoop",
-            params={"app": "stt_service", "spy": "in", "snoop_id": f"snoop_cust_{uniqueid}"},
-            auth=ARI_AUTH,
-            timeout=2
-        )
-
-        customer_snoop_response.raise_for_status()
-        customer_snoop = customer_snoop_response.json()
-        customer_snoop_id = customer_snoop.get("id")
-
-        if not customer_snoop_id:
-            raise RuntimeError(
-                "ARI did not return customer Snoop channel ID"
-            )
-
-        logger.info(f"Customer Snoop created: {customer_snoop_id}")
-
-        agent_snoop_response = requests.post(
-            f"{ARI_BASE_URL}/channels/{channel_agent}/snoop",
-            params={"app": "stt_service", "spy": "out", "snoop_id": f"snoop_agent_{uniqueid}"},
-            auth=ARI_AUTH,
-            timeout=2
-        )
-
-        agent_snoop_response.raise_for_status()
-        agent_snoop = agent_snoop_response.json()
-        agent_snoop_id = agent_snoop.get("id")
-
-        if not agent_snoop_id:
-            raise RuntimeError(
-                "ARI did not return agent Snoop channel ID"
-            )
-
-        logger.info(f"Agent Snoop created: {agent_snoop_id}")
-
-
-        logger.info(
-            f"STT media pipeline started for {uniqueid}: "
-            f"customer={channel_cust} "
-            f"-> snoop={customer_snoop_id} "
-            f"-> external={customer_external_id} "
-            f"-> {STT_SERVER_IP}:20000 | "
-            f"agent={channel_agent} "
-            f"-> snoop={agent_snoop_id} "
-            f"-> external={agent_external_id} "
-            f"-> {STT_SERVER_IP}:20002"
-        )
+        # Start RTP Stream for this channel
+        setup_single_channel_stream(channel, target_port, role, uniqueid)
 
     except Exception:
-        logger.exception("Failed in process_bridge_start execution")
-        
-        # If we know the uniqueid, allow a future BridgeEnter 
-        # to retry initialization. 
-        try: 
-            if uniqueid: 
-                active_stt_calls.discard(uniqueid) 
-                
-        except UnboundLocalError: 
-            pass
+        logger.exception(f"Failed to setup {role} audio stream for channel {channel}")
+        active_stt_channels.discard(uniqueid)
 
 
 def process_bridge_end(event, ami_client):
-    """Worker Task: Triggered on BridgeLeave or Hangup -> Calls /session/close"""
+    """Cleanup channel tracking when a user leaves Meetme or hangs up."""
     try:
         channel = event.keys.get("Channel", "")
-        if not channel or channel.startswith("Local/"):
+        if not channel or "Local/" in channel:
             return
 
         uniqueid = event.keys.get("Uniqueid") or get_channel_var(ami_client, channel, "UNIQUEID")
-        if not uniqueid:
-            return
-
-        # TRIGGER /session/close ON SERVER 2
-        try:
-            requests.post(STT_CLOSE_URL, json={"uniqueid": uniqueid}, timeout=2)
-            logger.info(f"Closed session on Server 2 for UniqueID: {uniqueid}")
-        except Exception:
-            logger.exception("Failed to send /session/close to Server 2")
+        if uniqueid and uniqueid in active_stt_channels:
+            active_stt_channels.remove(uniqueid)
+            try:
+                requests.post(STT_CLOSE_URL, json={"uniqueid": uniqueid}, timeout=2)
+                logger.info(f"Closed STT session stream for UniqueID: {uniqueid}")
+            except Exception:
+                logger.exception("Failed to send /session/close to Server 2")
 
     except Exception:
         logger.exception("Failed in process_bridge_end execution")

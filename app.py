@@ -10,7 +10,7 @@ from handlers.external_media_handler import process_bridge_start, process_bridge
 # Initialize AMI connection
 ami = AMIService()
 
-# High-concurrency worker thread pool (adjust workers based on server specs)
+# High-concurrency worker thread pool
 executor = ThreadPoolExecutor(max_workers=50, thread_name_prefix="ami_worker")
 
 
@@ -42,13 +42,13 @@ def handle_meetme_join(event):
         logger.debug(f"Ignoring internal join channel: {channel}")
         return
 
-    # 2. Identify Agent vs Customer
+    # 2. Process BOTH Agent and Customer connections
     if channel.startswith("SIP/") and not channel.startswith("SIP/ATnT"):
         logger.info(f"Agent joined room {meetme_room}: Channel={channel}")
-        return
+    else:
+        logger.info(f"Customer joined room {meetme_room}: Channel={channel}, Phone={caller_id_num}")
 
-    # 3. Process Customer Connection
-    logger.info(f"Customer joined room {meetme_room}: Channel={channel}, Phone={caller_id_num}")
+    # Offload to worker pool to start streaming RTP (Agent or Customer)
     executor.submit(process_bridge_start, event, ami.client)
 
 
@@ -64,13 +64,13 @@ def handle_meetme_leave(event):
         logger.debug(f"Ignoring internal leave channel: {channel}")
         return
 
-    # 2. Identify Agent vs Customer
+    # 2. Track disconnect for both Agent and Customer
     if channel.startswith("SIP/") and not channel.startswith("SIP/ATnT"):
         logger.info(f"Agent left room {meetme_room}: Channel={channel}")
-        return
+    else:
+        logger.info(f"Customer left room {meetme_room}: Channel={channel}")
 
-    # 3. Process Customer Disconnection
-    logger.info(f"Customer left room {meetme_room}: Channel={channel}")
+    # Cleanup session streaming
     executor.submit(process_bridge_end, event, ami.client)
 
 
@@ -83,11 +83,9 @@ def handle_hangup(event):
 def shutdown(signum, frame):
     logger.info("Shutdown signal received. Closing application...")
 
-    # Stop accepting new tasks and release threads
     executor.shutdown(wait=False)
 
     try:
-        # Close AMI connection
         ami.disconnect()
     except Exception:
         logger.exception("Error while stopping AMI")
@@ -97,7 +95,6 @@ def shutdown(signum, frame):
 
 
 if __name__ == "__main__":
-    # Handle Ctrl+C and systemd/docker stop
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
 
