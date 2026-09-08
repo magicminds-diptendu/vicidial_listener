@@ -94,13 +94,13 @@ def process_bridge_start(event, ami_client):
 
     # Start ExternalMedia RTP Stream for this channel leg
     try:
-        setup_single_channel_stream(
-            channel_id=channel,
-            target_port=target_port,
-            role=role,
-            uniqueid=uniqueid,
-            stt_server_ip=STT_SERVER_IP,
-        )
+        # setup_single_channel_stream(
+        #     channel_id=channel,
+        #     target_port=target_port,
+        #     role=role,
+        #     uniqueid=uniqueid,
+        #     stt_server_ip=STT_SERVER_IP,
+        # )
         logger.info(f"Hooked {role} RTP stream: Channel={channel} -> UDP {STT_SERVER_IP}:{target_port}")
     except Exception:
         logger.exception(f"Failed to setup {role} audio stream for channel {channel}")
