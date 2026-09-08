@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 import signal
 import sys
+import threading
 
 from services.ami_service import AMIService
 from services.logger_service import logger
@@ -94,9 +95,17 @@ def shutdown(signum, frame):
     sys.exit(0)
 
 
+def start_ari_service():
+    """Starts the ARI WebSocket in a daemon thread."""
+    ari_thread = threading.Thread(target=ami.run_ari_websocket, daemon=True, name="ari_stasis_ws")
+    ari_thread.start()
+
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
+    
+    # Register ARI Stasis application with Asterisk
+    start_ari_service()
 
     try:
         ami.start()
