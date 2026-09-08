@@ -88,7 +88,7 @@ def process_bridge_start(event, ami_client):
         }
         try:
             http_session.post(STT_INIT_URL, json=init_payload, timeout=2)
-            logger.info(f"Initialized STT session on Server 2 for uniqueid: {uniqueid}")
+            logger.info(f"Initialized STT session on Server 2 for {role} uniqueid: {uniqueid}")
         except Exception:
             logger.exception("Failed to send /session/init payload to Server 2")
 
