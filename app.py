@@ -1,9 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor
 import signal
 import sys
-import threading
-
 from services.ami_service import AMIService
+from services.ari_service import start_ari_service
 from services.logger_service import logger
 from handlers.customer_lookup_handler import process_customer_lookup
 from handlers.external_media_handler import process_bridge_start, process_bridge_end
@@ -94,11 +93,6 @@ def shutdown(signum, frame):
     logger.info("Application stopped successfully.")
     sys.exit(0)
 
-
-def start_ari_service():
-    """Starts the ARI WebSocket in a daemon thread."""
-    ari_thread = threading.Thread(target=ami.run_ari_websocket, daemon=True, name="ari_stasis_ws")
-    ari_thread.start()
 
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, shutdown)
