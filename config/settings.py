@@ -25,6 +25,10 @@ class Settings:
     ARI_PASS = os.getenv("ARI_PASS")
 
     STT_SERVER_IP = os.getenv('STT_SERVER_IP')
+    STT_INIT_URL = os.getenv('STT_INIT_URL')
+    STT_CLOSE_URL = os.getenv('STT_CLOSE_URL')
+    UDP_CUSTOMER_PORT = int(os.getenv('UDP_CUSTOMER_PORT'))
+    UDP_AGENT_PORT = int(os.getenv('UDP_AGENT_PORT'))
 
 
 settings = Settings()

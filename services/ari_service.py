@@ -24,8 +24,10 @@ class ARIService:
         self.stt_init_url = getattr(settings, "STT_INIT_URL", f"http://{self.stt_server_ip}:5000/session/init")
         self.stt_close_url = getattr(settings, "STT_CLOSE_URL", f"http://{self.stt_server_ip}:5000/session/close")
         
-        self.udp_customer_port = getattr(settings, "UDP_CUSTOMER_PORT", 20000)
-        self.udp_agent_port = getattr(settings, "UDP_AGENT_PORT", 20002)
+        # Port Pool Management (Range: 20000 - 29999)
+        self.min_port = getattr(settings, "UDP_PORT_RANGE_START", 20000)
+        self.max_port = getattr(settings, "UDP_PORT_RANGE_END", 30000)
+        self.used_ports = set()
 
         self.ws = None
         self.thread = None
@@ -34,17 +36,34 @@ class ARIService:
         # Persistent HTTP Session for optimal performance
         self.http_session = requests.Session()
 
-        # Thread-safe Active Sessions Tracking
-        self.active_sessions = set()
+        # Lock allocations and session tracking
+        self.resource_lock = threading.Lock()
         self.sessions_lock = threading.Lock()
+        self.active_sessions = set()
 
         # Memory mapping for ARI resource cleanup
         self.ari_resources = {}
 
+    def _allocate_port_pair(self):
+        """Allocates two free adjacent UDP ports for customer & agent streams."""
+        with self.resource_lock:
+            for port in range(self.min_port, self.max_port, 2):
+                if port not in self.used_ports and (port + 1) not in self.used_ports:
+                    self.used_ports.add(port)
+                    self.used_ports.add(port + 1)
+                    return port, port + 1
+            raise RuntimeError("No available UDP ports in the designated range!")
+
+    def _release_ports(self, *ports):
+        """Releases UDP ports back to the pool."""
+        with self.resource_lock:
+            for port in ports:
+                self.used_ports.discard(port)
+
     # -------------------------------------------------------------------------
     # STT Session Webhooks (Server 2)
     # -------------------------------------------------------------------------
-    def initialize_stt_session(self, uniqueid, metadata, customer_ssrc=None, agent_ssrc=None):
+    def initialize_stt_session(self, uniqueid, metadata):
         """Sends pre-setup metadata initialization payload to the external STT server."""
         with self.sessions_lock:
             if uniqueid not in self.active_sessions:
@@ -53,10 +72,6 @@ class ARIService:
                 init_payload = {
                     "uniqueid": uniqueid,
                     "metadata": metadata,
-                    "customer_ssrc": customer_ssrc,
-                    "agent_ssrc": agent_ssrc,
-                    "customer_port": self.udp_customer_port,
-                    "agent_port": self.udp_agent_port
                 }
 
                 try:
@@ -108,12 +123,17 @@ class ARIService:
                     f"StasisStart Triggered -> Channel: {stasis_channel_id} | "
                     f"Target: {target_channel_id} | Lead ID: {lead_id} | Phone: {phone_number}"
                 )
+                
+                # Allocate dynamic UDP ports per call
+                cust_port, agent_port = self._allocate_port_pair()
 
                 metadata = {
                     "lead_id": lead_id,
                     "phone_number": phone_number,
                     "target_channel": target_channel_id,
-                    "stasis_channel": stasis_channel_id
+                    "stasis_channel": stasis_channel_id,
+                    "customer_port": cust_port,
+                    "agent_port": agent_port
                 }
 
                 # 1. Initialize STT Session on Server 2
@@ -122,19 +142,23 @@ class ARIService:
                     metadata=metadata
                 )
 
-                self.ari_resources[stasis_channel_id] = {
-                    "uniqueid": uniqueid,
-                    "target_channel": target_channel_id,
-                    "bridges": [],
-                    "channels": []
-                }
+                with self.resource_lock:
+                    self.ari_resources[stasis_channel_id] = {
+                        "uniqueid": uniqueid,
+                        "target_channel": target_channel_id,
+                        "ports": [cust_port, agent_port],
+                        "bridges": [],
+                        "channels": []
+                    }
 
                 # 2. Setup Dual Channel Stream (Customer & Agent RTP Ports)
                 self.setup_dual_channel_stream(
                     stasis_channel_id=stasis_channel_id,
                     target_channel_id=target_channel_id,
                     uniqueid=uniqueid,
-                    lead_id=lead_id
+                    lead_id=lead_id,
+                    cust_port=cust_port,
+                    agent_port=agent_port
                 )
 
             elif event_type == "StasisEnd":
@@ -150,14 +174,16 @@ class ARIService:
     # -------------------------------------------------------------------------
     # ARI Audio Streaming Setup
     # -------------------------------------------------------------------------
-    def setup_dual_channel_stream(self, stasis_channel_id, target_channel_id, uniqueid, lead_id):
+    def setup_dual_channel_stream(self, stasis_channel_id, target_channel_id, uniqueid, lead_id, cust_port, agent_port):
         """Snoops customer and agent directions and streams them to remote UDP ports."""
         encoded_target_id = urllib.parse.quote_plus(target_channel_id)
-        resource_tracker = self.ari_resources.get(stasis_channel_id)
+        
+        with self.resource_lock:
+            resource_tracker = self.ari_resources.get(stasis_channel_id)
 
         streams = [
-            {"role": "customer", "spy": "in", "port": self.udp_customer_port},
-            {"role": "agent", "spy": "out", "port": self.udp_agent_port}
+            {"role": "customer", "spy": "in", "port": cust_port},
+            {"role": "agent", "spy": "out", "port": agent_port}
         ]
 
         for stream in streams:
@@ -217,8 +243,9 @@ class ARIService:
                 ).raise_for_status()
 
                 if resource_tracker:
-                    resource_tracker["bridges"].append(bridge_id)
-                    resource_tracker["channels"].extend([ext_id, snoop_id])
+                    with self.resource_lock:
+                        resource_tracker["bridges"].append(bridge_id)
+                        resource_tracker["channels"].extend([ext_id, snoop_id])
 
                 logger.info(
                     f"Streaming {role.upper()} audio to {self.stt_server_ip}:{port} | UniqueID: {uniqueid}"
@@ -232,7 +259,9 @@ class ARIService:
     # -------------------------------------------------------------------------
     def cleanup_channel_resources(self, stasis_channel_id):
         """Cleans up ARI resources and sends /session/close on StasisEnd."""
-        tracker = self.ari_resources.pop(stasis_channel_id, None)
+        with self.resource_lock:
+            tracker = self.ari_resources.pop(stasis_channel_id, None)
+
         if not tracker:
             logger.warning(f"No active resource tracker found for cleanup on Channel: {stasis_channel_id}")
             return
@@ -263,10 +292,13 @@ class ARIService:
             except Exception:
                 logger.exception(f"Error hanging up channel: {channel_id}")
 
-        # 3. Send /session/close to Server 2
+        # 3. Release UDP ports back to the pool
+        self._release_ports(*tracker.get("ports", []))
+        
+        # 4. Send /session/close to Server 2
         self.close_stt_session(uniqueid)
 
-        # 4. Remove session tracking record
+        # 5. Remove session tracking record
         with self.sessions_lock:
             self.active_sessions.discard(uniqueid)
 
