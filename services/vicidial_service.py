@@ -51,28 +51,23 @@ class VicidialService:
                 return cursor.execute(query, params or ())
         finally:
             conn.close()
+            
+    def table_exists(self, table_name):
+        """Check if a specific table exists in the current database schema."""
+        query = """
+            SELECT TABLE_NAME 
+            FROM INFORMATION_SCHEMA.TABLES 
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s
+        """
+        result = self.execute_one(query, (table_name,))
+        return bool(result)
 
-    def update_list(self, phone_number, **fields):
-        lead = self.execute_one(
-            """
-            SELECT lead_id
-            FROM vicidial_list
-            WHERE phone_number = %s
-            ORDER BY lead_id DESC
-            LIMIT 1
-            """,
-            (phone_number,),
-        )
-
-        if not lead:
-            logger.warning(f"No VICIdial lead found for {phone_number}")
-            return False
-
+    def update_list(self, lead_id, **fields):
+        """Update the vicidial_list table for a specific lead_id with provided fields."""
         if not fields:
             logger.warning("No fields provided to update.")
             return False
-
-        lead_id = lead["lead_id"]
+    
         set_clause = ", ".join(f"{column}=%s" for column in fields.keys())
         values = list(fields.values()) + [lead_id]
 
@@ -84,6 +79,31 @@ class VicidialService:
 
         self.update(query, values)
         logger.debug(f"Updated lead {lead_id} with fields: {list(fields.keys())}")
+        return True
+    
+    def update_custom_fields(self, list_id, lead_id, **fields):
+        """Update the custom_<list_id> table for a specific lead_id with provided fields."""
+        if not fields:
+            logger.warning("No fields provided to update.")
+            return False
+
+        custom_table_name = f"custom_{list_id}"
+        table_exists = self.table_exists(custom_table_name)
+        if not table_exists:
+            logger.warning(f"Custom table {custom_table_name} does not exist. Skipping update.")
+            return False
+        
+        set_clause = ", ".join(f"{column}=%s" for column in fields.keys())
+        values = list(fields.values()) + [lead_id]
+
+        query = f"""
+            UPDATE `{custom_table_name}`
+            SET {set_clause}
+            WHERE lead_id = %s
+        """
+
+        self.update(query, values)
+        logger.debug(f"Updated custom table {custom_table_name} for lead {lead_id} with fields: {list(fields.keys())}")
         return True
 
     def close(self):

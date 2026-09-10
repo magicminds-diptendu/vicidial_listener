@@ -2,7 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 import signal
 import sys
 
-from handlers.customer_lookup_handler import process_customer_lookup
+from handlers.lead_sync_handler import process_lead_sync
 from services.ami_service import AMIService
 from services.ari_service import ARIService
 from services.logger_service import logger
@@ -23,7 +23,7 @@ def boot(event):
 @ami.on("NewCallerid")
 def handle_new_call(event):
     """Triggered on incoming callers. Offloaded to worker pool."""
-    executor.submit(process_customer_lookup, event)
+    executor.submit(process_lead_sync, event)
 
 
 def shutdown(signum, frame):
