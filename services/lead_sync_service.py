@@ -78,7 +78,10 @@ class LeadSyncService:
             response = self.http_session.post(
                 self.crm_webhook_url,
                 data=json_payload,
-                headers={"Content-Type": "application/json"},
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                },
                 timeout=10,
             )
             
