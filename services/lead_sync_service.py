@@ -109,7 +109,7 @@ class LeadSyncService:
         }
 
         # Merge payloads (vendor_fields overrides vicidial standard fields if set)
-        return {**lead_info, **vendor_fields}
+        return {"click_source": "vicidial", **lead_info, **vendor_fields}
 
     def transform_lead_info_for_vicidial(self, crm_response):
         if not crm_response or not crm_response.get("success"):
