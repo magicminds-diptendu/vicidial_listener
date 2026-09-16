@@ -81,6 +81,8 @@ class LeadSyncService:
                 headers={"Content-Type": "application/json"},
                 timeout=10,
             )
+            
+            logger.debug("payload sent", extra={"payload": json_payload})
 
             if response.status_code != 200:
                 logger.info(
