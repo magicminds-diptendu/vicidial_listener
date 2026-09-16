@@ -36,7 +36,7 @@ def shutdown(signum, frame):
         logger.exception("Error disconnecting AMI")
     
     # 2. Drain worker pool (cancel non-started jobs, don't block indefinitely)
-    executor.shutdown(wait=False, cancel_futures=True)
+    executor.shutdown(wait=False)
     
     sys.exit(0)
 
