@@ -1,3 +1,5 @@
+import json
+
 import requests
 from config.settings import settings
 from services.logger_service import logger
@@ -71,9 +73,12 @@ class LeadSyncService:
         logger.debug(f"Calling CRM API for phone: {phone}")
 
         try:
+            json_payload = json.dumps(lead_info, default=str)
+            
             response = self.http_session.post(
                 self.crm_webhook_url,
-                json=lead_info,
+                data=json_payload,
+                headers={"Content-Type": "application/json"},
                 timeout=10,
             )
 
