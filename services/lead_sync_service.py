@@ -185,8 +185,8 @@ class LeadSyncService:
                 )
                 return False
             
-            update_success = self.vicidial_service.update_list(
-                lead_id=lead_info.get("lead_id"), {
+            self.vicidial_service.update_list(
+                lead_id=lead_info.get("lead_id"), **{
                     "first_name": "Diptendu"
                 }
             )
