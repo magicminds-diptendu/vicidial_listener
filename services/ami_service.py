@@ -1,8 +1,10 @@
 # import time
 # import websocket
+import requests
 from collections import defaultdict
 from threading import Event
 from asterisk.ami import AMIClient
+import requests
 from config.settings import settings
 from services.logger_service import logger
 
@@ -87,7 +89,8 @@ class AMIService:
         logger.info("AMI listener started")
 
         Event().wait()
-
+        
+    
     # def run_ari_websocket():
     #     """Maintains an active WebSocket Stasis connection to register stt_service in Asterisk."""
     #     ws_url = f"ws://{ARI_HOST}/ari/events?api_key={ARI_USER}:{ARI_PASS}&app={APP_NAME}"
