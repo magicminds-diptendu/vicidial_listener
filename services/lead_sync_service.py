@@ -242,9 +242,9 @@ class LeadSyncService:
                 logger.debug(f"Failed to update Vicidial lead info for phone: {phone}")
                 return False
 
-            transformed_custom_payload = self.transform_lead_info_for_custom(
-                crm_response
-            )
+            # transformed_custom_payload = self.transform_lead_info_for_custom(
+            #     crm_response
+            # )
             # if not transformed_custom_payload:
             #     logger.debug(
             #         f"Failed to transform CRM response for custom fields update for phone: {phone}"
