@@ -1,8 +1,10 @@
 import requests
-from collections import defaultdict
-from threading import Event
+import urllib3
 from config.settings import settings
 from services.logger_service import logger
+
+# Suppress self-signed / IP mismatch SSL warnings for local requests
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class AGCService:
@@ -19,10 +21,11 @@ class AGCService:
 
         payload = {
             "source": "python_listener",
-            "user": self.username,  # Vicidial API Admin user
-            "pass": self.password,  # Vicidial API Admin pass
-            "agent_user": user,  # Active Vicidial agent ID (e.g. "1001")
-            "function": "switch_lead",
+            "user": self.username,
+            "pass": self.password,
+            "agent_user": user,
+            "function": "ra_call_control",  # Updated from switch_lead
+            "stage": "RE-LOCATION",         # Required stage for ra_call_control
             "value": lead_id,
         }
 
@@ -30,7 +33,14 @@ class AGCService:
             logger.info(
                 f"Sending refresh command for Agent '{user}' on Lead ID '{lead_id}'"
             )
-            response = requests.get(self.api_url, params=payload, timeout=5)
+            
+            # verify=False prevents the SSLError on 127.0.0.1
+            response = requests.get(
+                self.api_url, 
+                params=payload, 
+                verify=False, 
+                timeout=5
+            )
 
             if response.status_code == 200 and "SUCCESS" in response.text:
                 logger.info(
