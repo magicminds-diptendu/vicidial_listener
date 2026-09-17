@@ -245,24 +245,24 @@ class LeadSyncService:
             transformed_custom_payload = self.transform_lead_info_for_custom(
                 crm_response
             )
-            if not transformed_custom_payload:
-                logger.debug(
-                    f"Failed to transform CRM response for custom fields update for phone: {phone}"
-                )
-            else:
-                update_custom_fields_success = (
-                    self.vicidial_service.update_custom_fields(
-                        list_id=lead_info.get("list_id"),
-                        lead_id=lead_info.get("lead_id"),
-                        **transformed_custom_payload,
-                    )
-                )
+            # if not transformed_custom_payload:
+            #     logger.debug(
+            #         f"Failed to transform CRM response for custom fields update for phone: {phone}"
+            #     )
+            # else:
+            #     update_custom_fields_success = (
+            #         self.vicidial_service.update_custom_fields(
+            #             list_id=lead_info.get("list_id"),
+            #             lead_id=lead_info.get("lead_id"),
+            #             **transformed_custom_payload,
+            #         )
+            #     )
 
-                if not update_custom_fields_success:
-                    logger.debug(
-                        f"Failed to update Vicidial custom fields for phone: {phone}"
-                    )
-                    return False
+            #     if not update_custom_fields_success:
+            #         logger.debug(
+            #             f"Failed to update Vicidial custom fields for phone: {phone}"
+            #         )
+            #         return False
 
             agent_user = self.get_agent_user_by_lead_id(lead_info.get("lead_id"))
             if agent_user:
