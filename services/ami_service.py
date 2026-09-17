@@ -1,10 +1,9 @@
 # import time
 # import websocket
-import requests
+
 from collections import defaultdict
 from threading import Event
 from asterisk.ami import AMIClient
-import requests
 from config.settings import settings
 from services.logger_service import logger
 

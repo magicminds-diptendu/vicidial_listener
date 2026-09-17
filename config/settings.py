@@ -17,6 +17,10 @@ class Settings:
     VICIDIAL_DB_NAME = os.getenv("VICIDIAL_DB_NAME", "asterisk")
     VICIDIAL_DB_USER = os.getenv("VICIDIAL_DB_USER", "cron")
     VICIDIAL_DB_PASSWORD = os.getenv("VICIDIAL_DB_PASSWORD", "1234")
+    
+    VICIDIAL_API_ENDPOINT = os.getenv("VICIDIAL_API_ENDPOINT", "https://127.0.0.1/agc/api.php")
+    VICIDIAL_API_USER = os.getenv("VICIDIAL_API_USER", "9999")
+    VICIDIAL_API_PASS =os.getenv("VICIDIAL_API_PASS", "1234")
 
     ARI_HOST = os.getenv("ARI_HOST", "127.0.0.1")
     ARI_PORT = int(os.getenv("ARI_PORT", 8088))

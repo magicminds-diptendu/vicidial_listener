@@ -4,6 +4,8 @@ import requests
 from config.settings import settings
 from services.logger_service import logger
 from services.vicidial_service import VicidialService
+from services.agc_service import AGCService
+
 
 class LeadSyncService:
 
@@ -15,10 +17,10 @@ class LeadSyncService:
         # Persistent HTTP Session for optimal performance
         self.http_session = requests.Session()
 
+        self.agc_service = AGCService()
+
     def get_lead_info_from_vicidial(self, phone_number):
-        logger.debug(
-            f"Fetching lead info from Vicidial for phone: {phone_number}"
-        )
+        logger.debug(f"Fetching lead info from Vicidial for phone: {phone_number}")
 
         try:
             full_lead_info = self.vicidial_service.execute_one(
@@ -43,7 +45,7 @@ class LeadSyncService:
                 f"Error fetching lead info from Vicidial for phone {phone_number}: {e}"
             )
             return None
-        
+
     def get_agent_user_by_lead_id(self, lead_id):
         logger.debug(f"Fetching agent user for lead_id: {lead_id}")
 
@@ -65,11 +67,9 @@ class LeadSyncService:
             return result.get("user")
 
         except Exception as e:
-            logger.error(
-                f"Error fetching agent user for lead_id {lead_id}: {e}"
-            )
+            logger.error(f"Error fetching agent user for lead_id {lead_id}: {e}")
             return None
-        
+
     def refresh_screen_with_retry(self, lead_id: int, ami_service, retries=3, delay=1):
         for attempt in range(retries):
             agent_user = self.get_agent_user_by_lead_id(lead_id)
@@ -77,12 +77,14 @@ class LeadSyncService:
                 ami_service.refresh_agent_screen(user=agent_user, lead_id=lead_id)
                 return True
             time.sleep(delay)
-        logger.warning(f"No active agent found for Lead ID {lead_id} after {retries} retries.")
+        logger.warning(
+            f"No active agent found for Lead ID {lead_id} after {retries} retries."
+        )
         return False
 
     def get_lead_info_from_vendor(self, phone):
         logger.debug(f"Calling Lead API for phone: {phone}")
-        
+
         if not self.vendor_webhook_url:
             logger.error("Vendor webhook URL is not configured.")
             return None
@@ -114,7 +116,7 @@ class LeadSyncService:
 
         try:
             json_payload = json.dumps(lead_info, default=str)
-            
+
             response = self.http_session.post(
                 self.crm_webhook_url,
                 data=json_payload,
@@ -123,7 +125,7 @@ class LeadSyncService:
                 },
                 timeout=10,
             )
-            
+
             logger.debug(f"payload sent: {json_payload}")
 
             if response.status_code != 200:
@@ -145,9 +147,7 @@ class LeadSyncService:
 
         # Safely extract non-empty keys from vendor response
         vendor_fields = {
-            k: v
-            for k, v in vendor_data.items()
-            if k in ("email", "bank_name") and v
+            k: v for k, v in vendor_data.items() if k in ("email", "bank_name") and v
         }
 
         # Merge payloads (vendor_fields overrides vicidial standard fields if set)
@@ -199,46 +199,34 @@ class LeadSyncService:
 
         return {
             "bank_name": custom_fields.get("bank_name", ""),
-            "no_of_family_members": custom_fields.get(
-                "no_of_family_members", 0
-            ),
-            "no_of_computer_users": custom_fields.get(
-                "no_of_computer_users", 0
-            ),
+            "no_of_family_members": custom_fields.get("no_of_family_members", 0),
+            "no_of_computer_users": custom_fields.get("no_of_computer_users", 0),
             "bank_account_access_other_member": custom_fields.get(
                 "bank_account_access_other_member", ""
             ),
         }
 
-    def sync_vicidial_lead_info(self, phone, ami_service=None):
+    def sync_vicidial_lead_info(self, phone):
         logger.debug(f"Syncing ViciDial lead info: {phone}")
 
         try:
             lead_info = self.get_lead_info_from_vicidial(phone)
             if not lead_info:
-                logger.debug(
-                    f"No lead info found in Vicidial for phone: {phone}"
-                )
+                logger.debug(f"No lead info found in Vicidial for phone: {phone}")
                 return False
 
             vendor_lead_info = self.get_lead_info_from_vendor(phone)
             if not vendor_lead_info:
-                logger.debug(
-                    f"No lead info found in Vendor API for phone: {phone}"
-                )
+                logger.debug(f"No lead info found in Vendor API for phone: {phone}")
 
-            transformed_payload = self.transform_payload_for_crm(
-                lead_info, {}
-            )
+            transformed_payload = self.transform_payload_for_crm(lead_info, vendor_lead_info)
             crm_response = self.send_lead_info_to_crm(transformed_payload)
             if not crm_response:
-                logger.debug(
-                    f"Failed to sync lead info to CRM for phone: {phone}"
-                )
+                logger.debug(f"Failed to sync lead info to CRM for phone: {phone}")
                 return False
 
-            transformed_vicidial_payload = (
-                self.transform_lead_info_for_vicidial(crm_response)
+            transformed_vicidial_payload = self.transform_lead_info_for_vicidial(
+                crm_response
             )
             if not transformed_vicidial_payload:
                 logger.debug(
@@ -251,9 +239,7 @@ class LeadSyncService:
             )
 
             if not update_success:
-                logger.debug(
-                    f"Failed to update Vicidial lead info for phone: {phone}"
-                )
+                logger.debug(f"Failed to update Vicidial lead info for phone: {phone}")
                 return False
 
             transformed_custom_payload = self.transform_lead_info_for_custom(
@@ -277,14 +263,14 @@ class LeadSyncService:
                         f"Failed to update Vicidial custom fields for phone: {phone}"
                     )
                     return False
-                
-            agent_user = self.get_agent_user_by_lead_id(lead_info.get("lead_id"))
-            if agent_user and ami_service:
-                ami_service.refresh_agent_screen(user=agent_user, lead_id=lead_info.get("lead_id"))
 
-            logger.info(
-                f"Successfully synced lead info to CRM for phone: {phone}"
-            )
+            agent_user = self.get_agent_user_by_lead_id(lead_info.get("lead_id"))
+            if agent_user:
+                self.agc_service.refresh_agent_screen(
+                    user=agent_user, lead_id=lead_info.get("lead_id")
+                )
+
+            logger.info(f"Successfully synced lead info to CRM for phone: {phone}")
             return True
 
         except requests.RequestException as e:
