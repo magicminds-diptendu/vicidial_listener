@@ -1,5 +1,5 @@
 import json
-
+import time
 import requests
 from config.settings import settings
 from services.logger_service import logger
@@ -43,6 +43,42 @@ class LeadSyncService:
                 f"Error fetching lead info from Vicidial for phone {phone_number}: {e}"
             )
             return None
+        
+    def get_agent_user_by_lead_id(self, lead_id):
+        logger.debug(f"Fetching agent user for lead_id: {lead_id}")
+
+        try:
+            result = self.vicidial_service.execute_one(
+                """
+                SELECT user
+                FROM vicidial_live_agents
+                WHERE lead_id = %s
+                LIMIT 1
+                """,
+                (lead_id,),
+            )
+
+            if not result:
+                logger.warning(f"No agent found for lead_id: {lead_id}")
+                return None
+
+            return result.get("user")
+
+        except Exception as e:
+            logger.error(
+                f"Error fetching agent user for lead_id {lead_id}: {e}"
+            )
+            return None
+        
+    def refresh_screen_with_retry(self, lead_id: int, ami_service, retries=3, delay=1):
+        for attempt in range(retries):
+            agent_user = self.get_agent_user_by_lead_id(lead_id)
+            if agent_user:
+                ami_service.refresh_agent_screen(user=agent_user, lead_id=lead_id)
+                return True
+            time.sleep(delay)
+        logger.warning(f"No active agent found for Lead ID {lead_id} after {retries} retries.")
+        return False
 
     def get_lead_info_from_vendor(self, phone):
         logger.debug(f"Calling Lead API for phone: {phone}")
@@ -174,7 +210,7 @@ class LeadSyncService:
             ),
         }
 
-    def sync_vicidial_lead_info(self, phone):
+    def sync_vicidial_lead_info(self, phone, ami_service=None):
         logger.debug(f"Syncing ViciDial lead info: {phone}")
 
         try:
@@ -241,6 +277,10 @@ class LeadSyncService:
                         f"Failed to update Vicidial custom fields for phone: {phone}"
                     )
                     return False
+                
+            agent_user = self.get_agent_user_by_lead_id(lead_info.get("lead_id"))
+            if agent_user and ami_service:
+                ami_service.refresh_agent_screen(user=agent_user, lead_id=lead_info.get("lead_id"))
 
             logger.info(
                 f"Successfully synced lead info to CRM for phone: {phone}"
