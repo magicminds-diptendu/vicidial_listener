@@ -46,41 +46,6 @@ class LeadSyncService:
             )
             return None
 
-    def get_agent_user_by_lead_id(self, lead_id):
-        logger.debug(f"Fetching agent user for lead_id: {lead_id}")
-
-        try:
-            result = self.vicidial_service.execute_one(
-                """
-                SELECT user
-                FROM vicidial_live_agents
-                WHERE lead_id = %s
-                LIMIT 1
-                """,
-                (lead_id,),
-            )
-
-            if not result:
-                logger.warning(f"No agent found for lead_id: {lead_id}")
-                return None
-
-            return result.get("user")
-
-        except Exception as e:
-            logger.error(f"Error fetching agent user for lead_id {lead_id}: {e}")
-            return None
-
-    def refresh_screen_with_retry(self, lead_id: int, ami_service, retries=3, delay=1):
-        for attempt in range(retries):
-            agent_user = self.get_agent_user_by_lead_id(lead_id)
-            if agent_user:
-                ami_service.refresh_agent_screen(user=agent_user, lead_id=lead_id)
-                return True
-            time.sleep(delay)
-        logger.warning(
-            f"No active agent found for Lead ID {lead_id} after {retries} retries."
-        )
-        return False
 
     def get_lead_info_from_vendor(self, phone):
         logger.debug(f"Calling Lead API for phone: {phone}")
@@ -220,27 +185,28 @@ class LeadSyncService:
                 logger.debug(f"No lead info found in Vendor API for phone: {phone}")
 
             transformed_payload = self.transform_payload_for_crm(lead_info, vendor_lead_info)
+            
             crm_response = self.send_lead_info_to_crm(transformed_payload)
             if not crm_response:
                 logger.debug(f"Failed to sync lead info to CRM for phone: {phone}")
                 return False
 
-            transformed_vicidial_payload = self.transform_lead_info_for_vicidial(
-                crm_response
-            )
-            if not transformed_vicidial_payload:
-                logger.debug(
-                    f"Failed to transform CRM response for Vicidial update for phone: {phone}"
-                )
-                return False
+            # transformed_vicidial_payload = self.transform_lead_info_for_vicidial(
+            #     crm_response
+            # )
+            # if not transformed_vicidial_payload:
+            #     logger.debug(
+            #         f"Failed to transform CRM response for Vicidial update for phone: {phone}"
+            #     )
+            #     return False
 
-            update_success = self.vicidial_service.update_list(
-                lead_id=lead_info.get("lead_id"), **transformed_vicidial_payload
-            )
+            # update_success = self.vicidial_service.update_list(
+            #     lead_id=lead_info.get("lead_id"), **transformed_vicidial_payload
+            # )
 
-            if not update_success:
-                logger.debug(f"Failed to update Vicidial lead info for phone: {phone}")
-                return False
+            # if not update_success:
+            #     logger.debug(f"Failed to update Vicidial lead info for phone: {phone}")
+            #     return False
 
             # transformed_custom_payload = self.transform_lead_info_for_custom(
             #     crm_response
@@ -264,15 +230,10 @@ class LeadSyncService:
             #         )
             #         return False
 
-            agent_user = self.get_agent_user_by_lead_id(lead_info.get("lead_id"))
-            if agent_user:
-                self.agc_service.refresh_agent_screen(
-                    user=agent_user, lead_id=lead_info.get("lead_id")
-                )
-
             logger.info(f"Successfully synced lead info to CRM for phone: {phone}")
             return True
 
         except requests.RequestException as e:
             logger.error(f"Error syncing vicidial for phone {phone}: {e}")
             return False
+
