@@ -29,15 +29,25 @@ def process_meetme_join(event):
             room_state[meetme_room] = {}
 
         if is_agent:
+            # Store Agent details
             room_state[meetme_room]["agent"] = {
                 "channel": channel,
                 "uniqueid": unique_id
             }
-        else:
-            # 1. Generate unique conversation ID for this call session
-            conversation_id = generate_conversation_id(meetme_room)
+            logger.info(f"Agent channel registered for room {meetme_room}: {channel}")
 
-            # 2. Store customer data and conversation ID
+            # If customer was ALREADY waiting in the room, start agent stream now
+            if "customer" in room_state[meetme_room] and "conversation_id" in room_state[meetme_room]:
+                conv_id = room_state[meetme_room]["conversation_id"]
+                start_external_media(
+                    channel_id=channel,
+                    conversation_id=conv_id,
+                    role="agent",
+                    port=10001
+                )
+        else:
+            # Customer joined logic
+            conversation_id = generate_conversation_id(meetme_room)
             room_state[meetme_room]["conversation_id"] = conversation_id
             room_state[meetme_room]["customer"] = {
                 "channel": channel,
@@ -45,7 +55,6 @@ def process_meetme_join(event):
             }
 
             agent_data = room_state[meetme_room].get("agent", {})
-            customer_data = room_state[meetme_room]["customer"]
             agent_channel = agent_data.get("channel")
 
             logger.info(
@@ -53,7 +62,7 @@ def process_meetme_join(event):
                 f"Room: {meetme_room} | Agent: {agent_channel} | Customer: {channel}"
             )
 
-            # 3. Trigger External Media Streams for both channels
+            # Trigger agent stream ONLY if agent channel is present
             if agent_channel:
                 start_external_media(
                     channel_id=agent_channel,
@@ -62,6 +71,7 @@ def process_meetme_join(event):
                     port=10001
                 )
 
+            # Trigger customer stream
             start_external_media(
                 channel_id=channel,
                 conversation_id=conversation_id,
@@ -96,12 +106,20 @@ def process_meetme_leave(event):
     meetme_room = event_data.get("Meetme", "")
     caller_id = event_data.get("CallerIDNum", "")
 
+    if not channel or not meetme_room:
+        return
+
     is_agent = channel.startswith("Local/") or caller_id == "ding"
 
-    # Reset room state when the customer leaves
-    if not is_agent and meetme_room:
-        with room_lock:
-            removed_session = room_state.pop(meetme_room, None)
-            if removed_session:
-                conv_id = removed_session.get("conversation_id", "N/A")
-                logger.info(f"Customer Left Room: {meetme_room} | Ended ConvID: {conv_id}")
+    with room_lock:
+        if meetme_room in room_state:
+            if is_agent:
+                # Agent logged off/left room completely
+                room_state.pop(meetme_room, None)
+                logger.info(f"Agent left room {meetme_room}. Cleaned up room state.")
+            else:
+                # Customer left - clear only customer and conversation_id
+                room_state[meetme_room].pop("customer", None)
+                old_conv = room_state[meetme_room].pop("conversation_id", None)
+                logger.info(f"Customer left room {meetme_room}. Closed ConvID: {old_conv}")
+                # Notice: room_state[meetme_room]["agent"] remains stored for the NEXT customer!
