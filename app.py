@@ -41,10 +41,10 @@ def handle_new_call(event):
 
 @ami.on("MeetmeJoin")
 def handle_meetme_join(event):
-    channel = event.get("Channel", "")
-    meetme_room = event.get("Meetme", "")
-    caller_id = event.get("CallerIDNum", "")
-    unique_id = event.get("Uniqueid", "")
+    channel = event.keys.get("Channel", "")
+    meetme_room = event.keys.get("Meetme", "")
+    caller_id = event.keys.get("CallerIDNum", "")
+    unique_id = event.keys.get("Uniqueid", "")
 
     if not channel or not meetme_room:
         return
