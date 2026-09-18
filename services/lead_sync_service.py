@@ -101,7 +101,7 @@ class LeadSyncService:
             logger.error(f"Error calling CRM API for phone {phone}: {e}")
             return None
 
-    def transform_payload_for_crm(self, lead_info, vendor_lead_info):
+    def transform_payload_for_crm(self, lead_info, vendor_lead_info = {}):
         phone = lead_info.get("phone_number")
         logger.debug(f"Transforming payload for CRM for phone: {phone}")
 
