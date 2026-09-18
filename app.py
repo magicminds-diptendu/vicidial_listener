@@ -1,10 +1,9 @@
 from concurrent.futures import ThreadPoolExecutor
 import signal
 import sys
-import threading
 
 from handlers.lead_sync_handler import process_crm_lead_sync, process_vicidial_lead_sync
-# from handlers.external_media_handler import meetme_join_handler, meetme_leave_handler
+from handlers.external_media_handler import process_meetme_join, process_meetme_leave
 from services.ami_service import AMIService
 # from services.ari_service import ARIService
 from services.logger_service import logger
@@ -12,8 +11,6 @@ from services.logger_service import logger
 # Initialize AMI connection
 ami = AMIService()
 # ari = ARIService()
-room_state = {}
-room_lock = threading.Lock()
 
 # High-concurrency worker thread pool
 executor = ThreadPoolExecutor(max_workers=50, thread_name_prefix="ami_worker")
@@ -30,65 +27,20 @@ def handle_new_call(event):
     executor.submit(process_crm_lead_sync, event)
 
 
-# @ami.on("MeetmeJoin")
-# def handle_meetme_join(event):
-#     """Triggered on conference join. Offloads lead sync and External Media concurrently."""
-#     # Task 1: Process Vicidial Sync
-#     executor.submit(process_vicidial_lead_sync, event)
-    
-#     # Task 2: Trigger External Media Streaming separately
-#     executor.submit(meetme_join_handler, event)
-
 @ami.on("MeetmeJoin")
 def handle_meetme_join(event):
-    channel = event.keys.get("Channel", "")
-    meetme_room = event.keys.get("Meetme", "")
-    caller_id = event.keys.get("CallerIDNum", "")
-    unique_id = event.keys.get("Uniqueid", "")
+    """Triggered on conference join. Offloads lead sync and External Media concurrently."""
+    # Task 1: Process Vicidial Sync
+    executor.submit(process_vicidial_lead_sync, event)
     
-    logger.debug(f"channel: {channel}")
-    logger.debug(f"meetme_room: {meetme_room}")
-    logger.debug(f"caller_id: {caller_id}")
-    logger.debug(f"unique_id: {channel}")
+    # Task 2: Trigger External Media Streaming separately
+    executor.submit(process_meetme_join, event)
 
-    if not channel or not meetme_room:
-        return
     
-    logger.debug(f"channel: {channel} or meetme_room {meetme_room}")
-
-    is_agent = channel.startswith("Local/") or caller_id == "ding"
-
-    logger.debug(f"is_agent: {is_agent}")
+@ami.on("MeetmeLeave")
+def handle_meetme_leave(event):
+    executor.submit(process_meetme_leave, event)
     
-    with room_lock:
-        if meetme_room not in room_state:
-            room_state[meetme_room] = {}
-
-        if is_agent:
-            # Store Agent details
-            room_state[meetme_room]["agent"] = {
-                "channel": channel,
-                "uniqueid": unique_id
-            }
-        else:
-            # Customer joined: combine both channel details
-            room_state[meetme_room]["customer"] = {
-                "channel": channel,
-                "uniqueid": unique_id
-            }
-            
-            agent_data = room_state[meetme_room].get("agent")
-            customer_data = room_state[meetme_room]["customer"]
-
-            logger.info(
-                f"FULL CONVERSATION CONNECTED | Room: {meetme_room} | "
-                f"Agent Channel: {agent_data.get('channel') if agent_data else 'N/A'} | "
-                f"Customer Channel: {customer_data['channel']}"
-            )
-    
-# @ami.on("")
-# def handle_meetme_leave(event):
-#     executor.submit(meetme_leave_handler, event)
     
 def shutdown(signum, frame):
     logger.info("Shutdown signal received. Shutting down Server 1 manager...")
