@@ -4,7 +4,7 @@ import sys
 import threading
 
 from handlers.lead_sync_handler import process_crm_lead_sync, process_vicidial_lead_sync
-from handlers.external_media_handler import meetme_join_handler, meetme_leave_handler
+# from handlers.external_media_handler import meetme_join_handler, meetme_leave_handler
 from services.ami_service import AMIService
 # from services.ari_service import ARIService
 from services.logger_service import logger
@@ -77,9 +77,9 @@ def handle_meetme_join(event):
                 f"Customer Channel: {customer_data['channel']}"
             )
     
-@ami.on("")
-def handle_meetme_leave(event):
-    executor.submit(meetme_leave_handler, event)
+# @ami.on("")
+# def handle_meetme_leave(event):
+#     executor.submit(meetme_leave_handler, event)
     
 def shutdown(signum, frame):
     logger.info("Shutdown signal received. Shutting down Server 1 manager...")
