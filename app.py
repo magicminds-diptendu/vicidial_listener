@@ -3,6 +3,7 @@ import signal
 import sys
 
 from handlers.lead_sync_handler import process_crm_lead_sync, process_vicidial_lead_sync
+from handlers.external_media_handler import handle_external_media_stream
 from services.ami_service import AMIService
 # from services.ari_service import ARIService
 from services.logger_service import logger
@@ -28,8 +29,12 @@ def handle_new_call(event):
 
 @ami.on("MeetmeJoin")
 def handle_meetme_join(event):
-    """Triggered on answer call. Offloaded to worker pool."""
+    """Triggered on conference join. Offloads lead sync and External Media concurrently."""
+    # Task 1: Process Vicidial Sync
     executor.submit(process_vicidial_lead_sync, event)
+    
+    # Task 2: Trigger External Media Streaming separately
+    executor.submit(handle_external_media_stream, event)
 
 def shutdown(signum, frame):
     logger.info("Shutdown signal received. Shutting down Server 1 manager...")
