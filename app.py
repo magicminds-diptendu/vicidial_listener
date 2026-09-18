@@ -45,12 +45,21 @@ def handle_meetme_join(event):
     meetme_room = event.keys.get("Meetme", "")
     caller_id = event.keys.get("CallerIDNum", "")
     unique_id = event.keys.get("Uniqueid", "")
+    
+    logger.debug(f"channel: {channel}")
+    logger.debug(f"meetme_room: {meetme_room}")
+    logger.debug(f"caller_id: {caller_id}")
+    logger.debug(f"unique_id: {channel}")
 
     if not channel or not meetme_room:
         return
+    
+    logger.debug(f"channel: {channel} or meetme_room {meetme_room}")
 
     is_agent = channel.startswith("Local/") or caller_id == "ding"
 
+    logger.debug(f"is_agent: {is_agent}")
+    
     with room_lock:
         if meetme_room not in room_state:
             room_state[meetme_room] = {}
