@@ -111,15 +111,10 @@ def process_meetme_leave(event):
 
     is_agent = channel.startswith("Local/") or caller_id == "ding"
 
-    with room_lock:
-        if meetme_room in room_state:
-            if is_agent:
-                # Agent logged off/left room completely
-                room_state.pop(meetme_room, None)
-                logger.info(f"Agent left room {meetme_room}. Cleaned up room state.")
-            else:
-                # Customer left - clear only customer and conversation_id
-                room_state[meetme_room].pop("customer", None)
-                old_conv = room_state[meetme_room].pop("conversation_id", None)
-                logger.info(f"Customer left room {meetme_room}. Closed ConvID: {old_conv}")
-                # Notice: room_state[meetme_room]["agent"] remains stored for the NEXT customer!
+    # Reset room state when the customer leaves
+    if not is_agent and meetme_room:
+        with room_lock:
+            removed_session = room_state.pop(meetme_room, None)
+            if removed_session:
+                conv_id = removed_session.get("conversation_id", "N/A")
+                logger.info(f"Customer Left Room: {meetme_room} | Ended ConvID: {conv_id}")

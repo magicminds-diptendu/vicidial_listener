@@ -37,9 +37,9 @@ def handle_meetme_join(event):
     executor.submit(process_meetme_join, event)
 
     
-@ami.on("MeetmeLeave")
-def handle_meetme_leave(event):
-    executor.submit(process_meetme_leave, event)
+# @ami.on("MeetmeLeave")
+# def handle_meetme_leave(event):
+#     executor.submit(process_meetme_leave, event)
     
     
 def shutdown(signum, frame):
