@@ -2,7 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 import signal
 import sys
 
-from handlers.lead_sync_handler import process_lead_sync
+from handlers.lead_sync_handler import process_crm_lead_sync, process_vicidial_lead_sync
 from services.ami_service import AMIService
 # from services.ari_service import ARIService
 from services.logger_service import logger
@@ -23,8 +23,13 @@ def boot(event):
 @ami.on("NewCallerid")
 def handle_new_call(event):
     """Triggered on incoming callers. Offloaded to worker pool."""
-    executor.submit(process_lead_sync, event)
+    executor.submit(process_crm_lead_sync, event)
 
+
+@ami.on("MeetmeJoin")
+def handle_meetme_join(event):
+    """Triggered on answer call. Offloaded to worker pool."""
+    executor.submit(process_vicidial_lead_sync, event)
 
 def shutdown(signum, frame):
     logger.info("Shutdown signal received. Shutting down Server 1 manager...")

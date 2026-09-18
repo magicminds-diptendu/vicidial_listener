@@ -1,5 +1,4 @@
 import json
-import time
 import requests
 from config.settings import settings
 from services.logger_service import logger
@@ -10,14 +9,13 @@ from services.agc_service import AGCService
 class LeadSyncService:
 
     def __init__(self):
+        self.agc_service = AGCService()
         self.vicidial_service = VicidialService()
         self.vendor_webhook_url = settings.VENDOR_WEBHOOK_URL
         self.crm_webhook_url = settings.CRM_WEBHOOK_URL
 
         # Persistent HTTP Session for optimal performance
         self.http_session = requests.Session()
-
-        self.agc_service = AGCService()
 
     def get_lead_info_from_vicidial(self, phone_number):
         logger.debug(f"Fetching lead info from Vicidial for phone: {phone_number}")
@@ -45,7 +43,6 @@ class LeadSyncService:
                 f"Error fetching lead info from Vicidial for phone {phone_number}: {e}"
             )
             return None
-
 
     def get_lead_info_from_vendor(self, phone):
         logger.debug(f"Calling Lead API for phone: {phone}")
@@ -163,16 +160,14 @@ class LeadSyncService:
             return {}
 
         return {
-            "bank_name": custom_fields.get("bank_name", ""),
-            "no_of_family_members": custom_fields.get("no_of_family_members", 0),
-            "no_of_computer_users": custom_fields.get("no_of_computer_users", 0),
-            "bank_account_access_other_member": custom_fields.get(
-                "bank_account_access_other_member", ""
-            ),
+            "BankName": custom_fields.get("BankName", ""),
+            "NoofFamilyMember": custom_fields.get("NoofFamilyMember", 0),
+            "NoofComputerUsers": custom_fields.get("NoofComputerUsers", 0),
+            "BankAccountAccessOtherMember": custom_fields.get("BankAccountAccessOtherMember", ""),
         }
 
-    def sync_vicidial_lead_info(self, phone):
-        logger.debug(f"Syncing ViciDial lead info: {phone}")
+    def sync_lead_info_to_crm(self, phone):
+        logger.debug(f"Syncing CRM lead info: {phone}")
 
         try:
             lead_info = self.get_lead_info_from_vicidial(phone)
@@ -191,45 +186,6 @@ class LeadSyncService:
                 logger.debug(f"Failed to sync lead info to CRM for phone: {phone}")
                 return False
 
-            # transformed_vicidial_payload = self.transform_lead_info_for_vicidial(
-            #     crm_response
-            # )
-            # if not transformed_vicidial_payload:
-            #     logger.debug(
-            #         f"Failed to transform CRM response for Vicidial update for phone: {phone}"
-            #     )
-            #     return False
-
-            # update_success = self.vicidial_service.update_list(
-            #     lead_id=lead_info.get("lead_id"), **transformed_vicidial_payload
-            # )
-
-            # if not update_success:
-            #     logger.debug(f"Failed to update Vicidial lead info for phone: {phone}")
-            #     return False
-
-            # transformed_custom_payload = self.transform_lead_info_for_custom(
-            #     crm_response
-            # )
-            # if not transformed_custom_payload:
-            #     logger.debug(
-            #         f"Failed to transform CRM response for custom fields update for phone: {phone}"
-            #     )
-            # else:
-            #     update_custom_fields_success = (
-            #         self.vicidial_service.update_custom_fields(
-            #             list_id=lead_info.get("list_id"),
-            #             lead_id=lead_info.get("lead_id"),
-            #             **transformed_custom_payload,
-            #         )
-            #     )
-
-            #     if not update_custom_fields_success:
-            #         logger.debug(
-            #             f"Failed to update Vicidial custom fields for phone: {phone}"
-            #         )
-            #         return False
-
             logger.info(f"Successfully synced lead info to CRM for phone: {phone}")
             return True
 
@@ -237,3 +193,63 @@ class LeadSyncService:
             logger.error(f"Error syncing vicidial for phone {phone}: {e}")
             return False
 
+    def sync_lead_info_to_vicidial(self, phone): 
+        logger.debug(f"Syncing ViciDial lead info: {phone}")
+        try:
+            lead_info = self.get_lead_info_from_vicidial(phone)
+            if not lead_info:
+                logger.debug(f"No lead info found in Vicidial for phone: {phone}")
+                return False
+            
+            transformed_payload = self.transform_payload_for_crm(lead_info)
+            
+            crm_response = self.send_lead_info_to_crm(transformed_payload)
+            if not crm_response:
+                logger.debug(f"Failed to sync lead info to CRM for phone: {phone}")
+                return False
+            
+            transformed_vicidial_payload = self.transform_lead_info_for_vicidial(
+                crm_response
+            )
+            if not transformed_vicidial_payload:
+                logger.debug(
+                    f"Failed to transform CRM response for Vicidial update for phone: {phone}"
+                )
+                return False
+            
+            update_success = self.agc_service.update_agent_lead_fields(
+                agent_user=lead_info.get("user"),
+                lead_id=lead_info.get("lead_id"),
+                contact=transformed_vicidial_payload
+            )
+
+            if not update_success:
+                logger.debug(f"Failed to update Vicidial lead info for phone: {phone}")
+                return False
+
+            transformed_custom_payload = self.transform_lead_info_for_custom(
+                crm_response
+            )
+            
+            if not transformed_custom_payload:
+                logger.debug(
+                    f"Failed to transform CRM response for custom fields update for phone: {phone}"
+                )
+            else:
+                update_custom_fields_success = (
+                    self.vicidial_service.update_custom_fields(
+                        list_id=lead_info.get("list_id"),
+                        lead_id=lead_info.get("lead_id"),
+                        **transformed_custom_payload,
+                    )
+                )
+
+                if not update_custom_fields_success:
+                    logger.debug(
+                        f"Failed to update Vicidial custom fields for phone: {phone}"
+                    )
+                    return False
+            
+        except requests.RequestException as e:
+                logger.error(f"Error syncing vicidial for phone {phone}: {e}")
+                return False
