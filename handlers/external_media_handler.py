@@ -51,7 +51,7 @@ def process_meetme_join(event):
                     channel_id=channel,
                     conversation_id=conv_id,
                     role="agent",
-                    port=10001,
+                    port=20002,
                 )
         else:
             # Customer joined logic
@@ -76,7 +76,7 @@ def process_meetme_join(event):
                     channel_id=agent_channel,
                     conversation_id=conversation_id,
                     role="agent",
-                    port=20000,
+                    port=20002,
                 )
 
             # Trigger customer stream
@@ -84,7 +84,7 @@ def process_meetme_join(event):
                 channel_id=channel,
                 conversation_id=conversation_id,
                 role="customer",
-                port=20002,
+                port=20000,
             )
 
 
