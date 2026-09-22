@@ -24,10 +24,10 @@ def process_meetme_join(event):
     caller_id = event_data.get("CallerIDNum", "")
     unique_id = event_data.get("Uniqueid", "")
 
-    if caller_id == "0000000000" or not channel or not meetme_room:
+    if channel.startswith("Local/") or not meetme_room:
         return
 
-    is_agent = channel.startswith("Local/") or caller_id == "ding"
+    is_agent = channel.startswith("SIP/") or caller_id == "0000000000"
 
     with room_lock:
         if meetme_room not in room_state:
