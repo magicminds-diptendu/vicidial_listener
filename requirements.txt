@@ -1,14 +1,6 @@
 asterisk-ami==0.1.7
-certifi==2025.4.26
-charset-normalizer==2.0.12
 DBUtils==2.0.3
-gevent==22.10.2
-greenlet==2.0.2
-idna==3.10
 PyMySQL==1.0.2
 python-dotenv==0.20.0
 requests==2.27.1
-urllib3==1.26.20
 websocket==0.2.1
-zope.event==4.6
-zope.interface==5.5.2
