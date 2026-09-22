@@ -142,7 +142,7 @@ def start_external_media(channel_id: str, conversation_id: str, role: str, port:
         # 4. Join Snoop and ExternalMedia to bridge
         requests.post(
             f"{ari_base_url}/bridges/{bridge_id}/addChannel",
-            params={"channel": [snoop_id, ext_id]},
+            params={"channel": f"{snoop_id},{ext_id}"},
             auth=ari_auth,
             timeout=2,
         ).raise_for_status()
