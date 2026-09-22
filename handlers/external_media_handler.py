@@ -24,10 +24,10 @@ def process_meetme_join(event):
     caller_id = event_data.get("CallerIDNum", "")
     unique_id = event_data.get("Uniqueid", "")
 
-    if channel.startswith("Local/") or not meetme_room:
+    if not channel.startswith("SIP/") or not meetme_room:
         return
 
-    is_agent = channel.startswith("SIP/") or caller_id == "0000000000"
+    is_agent = caller_id == "0000000000"
 
     with room_lock:
         if meetme_room not in room_state:
@@ -40,19 +40,6 @@ def process_meetme_join(event):
                 "uniqueid": unique_id,
             }
             logger.info(f"Agent channel registered for room {meetme_room}: {channel}")
-
-            # If customer was ALREADY waiting in the room, start agent stream now
-            if (
-                "customer" in room_state[meetme_room]
-                and "conversation_id" in room_state[meetme_room]
-            ):
-                conv_id = room_state[meetme_room]["conversation_id"]
-                start_external_media(
-                    channel_id=channel,
-                    conversation_id=conv_id,
-                    role="agent",
-                    port=20002,
-                )
         else:
             # Customer joined logic
             conversation_id = generate_conversation_id(meetme_room)
@@ -179,17 +166,28 @@ def process_meetme_leave(event):
     meetme_room = event_data.get("Meetme", "")
     caller_id = event_data.get("CallerIDNum", "")
 
-    if not channel or not meetme_room:
+    if not channel.startswith("SIP/") or not meetme_room:
         return
 
-    is_agent = channel.startswith("Local/") or caller_id == "ding"
+    is_agent = caller_id == "0000000000"
 
-    # Reset room state when the customer leaves
-    if not is_agent and meetme_room:
-        with room_lock:
-            removed_session = room_state.pop(meetme_room, None)
-            if removed_session:
-                conv_id = removed_session.get("conversation_id", "N/A")
-                logger.info(
-                    f"Customer Left Room: {meetme_room} | Ended ConvID: {conv_id}"
-                )
+    with room_lock:
+        if meetme_room not in room_state:
+            return
+
+        room = room_state[meetme_room]
+
+        if is_agent:
+            # Remove agent data
+            room.pop("agent", None)
+            logger.info(f"Agent left room: {meetme_room}")
+        else:
+            # Remove customer and conversation data
+            conv_id = room.pop("conversation_id", None)
+            room.pop("customer", None)
+            logger.info(f"Customer left room: {meetme_room} | Ended ConvID: {conv_id}")
+
+        # If neither agent nor customer remains, purge the room entry
+        if "agent" not in room and "customer" not in room:
+            room_state.pop(meetme_room, None)
+            logger.info(f"Room {meetme_room} is now empty and has been removed from state.")
