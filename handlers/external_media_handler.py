@@ -9,6 +9,14 @@ from config.settings import settings
 room_state = {}
 room_lock = threading.Lock()
 
+# Helper to centralize ARI credentials
+def get_ari_config():
+    ari_host = getattr(settings, "ARI_HOST", "127.0.0.1")
+    ari_port = getattr(settings, "ARI_PORT", 8088)
+    ari_user = getattr(settings, "ARI_USER", "stt_service")
+    ari_password = getattr(settings, "ARI_PASS", "your_secure_ari_password")
+    return (ari_user, ari_password), f"http://{ari_host}:{ari_port}/ari"
+
 
 def generate_conversation_id(meetme_room: str) -> str:
     timestamp = int(time.time())
@@ -37,14 +45,12 @@ def process_meetme_join(event):
             room_state[meetme_room] = {}
 
         if is_agent:
-            # Store Agent details
             room_state[meetme_room]["agent"] = {
                 "channel": channel,
                 "uniqueid": unique_id,
             }
             logger.info(f"Agent channel registered for room {meetme_room}: {channel}")
         else:
-            # Customer joined logic
             conversation_id = generate_conversation_id(meetme_room)
             room_state[meetme_room]["conversation_id"] = conversation_id
             room_state[meetme_room]["customer"] = {
@@ -60,49 +66,39 @@ def process_meetme_join(event):
                 f"Room: {meetme_room} | Agent: {agent_channel} | Customer: {channel}"
             )
 
-            # Trigger agent stream ONLY if agent channel is present
+            # FIX: We snoop the AGENT channel for both roles, using 'in' and 'out' to separate legs.
             if agent_channel:
+                # Target Agent Voice
                 start_external_media(
                     channel_id=agent_channel,
                     conversation_id=conversation_id,
                     role="agent",
                     port=20002,
                 )
+                # Target Customer Voice (Incoming to Agent Channel)
+                start_external_media(
+                    channel_id=agent_channel,
+                    conversation_id=conversation_id,
+                    role="customer",
+                    port=20000,
+                )
+            else:
+                logger.warning(f"Cannot start transcription for room {meetme_room}. Agent channel missing.")
 
-            # Trigger customer stream
-            start_external_media(
-                channel_id=channel,
-                conversation_id=conversation_id,
-                role="customer",
-                port=20000,
-            )
 
-
-def start_external_media(
-    channel_id: str, conversation_id: str, role: str, port: int
-):
-    """Snoops a specific channel and routes audio to a dedicated RTP port via ExternalMedia."""
-
-    ari_host = getattr(settings, "ARI_HOST", "127.0.0.1")
-    ari_port = getattr(settings, "ARI_PORT", 8088)
-    ari_user = getattr(settings, "ARI_USER", "stt_service")
-    ari_password = getattr(settings, "ARI_PASS", "your_secure_ari_password")
-    ari_auth = (ari_user, ari_password)
-    ari_base_url = f"http://{ari_host}:{ari_port}/ari"
-
+def start_external_media(channel_id: str, conversation_id: str, role: str, port: int):
+    ari_auth, ari_base_url = get_ari_config()
     stt_app_name = getattr(settings, "STT_APP_NAME")
     stt_server_ip = getattr(settings, "STT_SERVER_IP")
     
     try:
         encoded_channel_id = urllib.parse.quote_plus(channel_id)
-        
-        # Determine spy direction based on role
         spy_direction = "in" if role.lower() == "customer" else "out"
 
         # 1. External Media Channel
         ext_res = requests.post(
             f"{ari_base_url}/channels/externalMedia",
-            params={
+            json={
                 "app": stt_app_name,
                 "external_host": f"{stt_server_ip}:{port}",
                 "format": "slin16",
@@ -121,7 +117,7 @@ def start_external_media(
             f"{ari_base_url}/channels/{encoded_channel_id}/snoop",
             params={
                 "app": stt_app_name,
-                "spy": "both",
+                "spy": spy_direction,
                 "snoop_id": f"snoop_{role}_{conversation_id}",
             },
             auth=ari_auth,
@@ -131,36 +127,31 @@ def start_external_media(
         snoop_id = snoop_res.json().get("id")
 
         # 3. Create mixing bridge
+        bridge_id = f"bridge_{role}_{conversation_id}"
         bridge_res = requests.post(
             f"{ari_base_url}/bridges",
             params={
                 "app": stt_app_name,
                 "type": "mixing",
-                "name": f"bridge_{role}_{conversation_id}",
+                "bridgeId": bridge_id, # explicit ID naming makes cleanup easier
             },
             auth=ari_auth,
             timeout=2,
         )
         bridge_res.raise_for_status()
-        bridge_id = bridge_res.json().get("id")
 
         # 4. Join Snoop and ExternalMedia to bridge
         requests.post(
             f"{ari_base_url}/bridges/{bridge_id}/addChannel",
-            params={"channel": f"{snoop_id},{ext_id}"},
+            params={"channel": [snoop_id, ext_id]},
             auth=ari_auth,
             timeout=2,
         ).raise_for_status()
 
-        logger.info(
-            f"Started {role.upper()} audio stream for {conversation_id} on Port {port} (Channel: {channel_id})"
-            f"external_media_id: {ext_id}"
-            f"snoop_id: {snoop_id}"
-            f"bridge_id: {bridge_id}"
-        )
+        logger.info(f"Started {role.upper()} audio stream on Port {port} for Conv: {conversation_id}")
 
     except Exception as e:
-        logger.error(f"Failed to start External Media for {channel_id}: {str(e)}")
+        logger.error(f"Failed to start External Media for {role} on channel {channel_id}: {str(e)}")
 
 
 def process_meetme_leave(event):
@@ -176,24 +167,34 @@ def process_meetme_leave(event):
         return
 
     is_agent = caller_id == "0000000000"
+    ari_auth, ari_base_url = get_ari_config()
 
     with room_lock:
         if meetme_room not in room_state:
             return
 
         room = room_state[meetme_room]
+        conv_id = room.get("conversation_id")
 
         if is_agent:
-            # Remove agent data
             room.pop("agent", None)
             logger.info(f"Agent left room: {meetme_room}")
         else:
-            # Remove customer and conversation data
-            conv_id = room.pop("conversation_id", None)
             room.pop("customer", None)
             logger.info(f"Customer left room: {meetme_room} | Ended ConvID: {conv_id}")
 
-        # If neither agent nor customer remains, purge the room entry
+        # FIX: Active Asterisk resource teardown when the conversation falls apart
+        if conv_id and ("agent" not in room or "customer" not in room):
+            for role in ["agent", "customer"]:
+                target_bridge = f"bridge_{role}_{conv_id}"
+                try:
+                    # Deleting the mixing bridge implicitly kicks out and destroys the snoop/externalMedia channels inside it
+                    res = requests.delete(f"{ari_base_url}/bridges/{target_bridge}", auth=ari_auth, timeout=2)
+                    if res.status_code == 204:
+                        logger.info(f"Successfully cleaned up Asterisk bridge: {target_bridge}")
+                except Exception as e:
+                    logger.error(f"Error cleaning up bridge {target_bridge}: {str(e)}")
+
         if "agent" not in room and "customer" not in room:
             room_state.pop(meetme_room, None)
-            logger.info(f"Room {meetme_room} is now empty and has been removed from state.")
+            logger.info(f"Room {meetme_room} completely purged from state.")
