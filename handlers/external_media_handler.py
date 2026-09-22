@@ -89,7 +89,7 @@ def process_meetme_join(event):
 
 
 def start_external_media(
-    self, channel_id: str, conversation_id: str, role: str, target_port: int
+    channel_id: str, conversation_id: str, role: str, target_port: int
 ) -> dict:
     """Snoops a specific channel and routes audio to a dedicated RTP port via ExternalMedia."""
 
