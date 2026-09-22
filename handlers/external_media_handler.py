@@ -76,13 +76,16 @@ def process_meetme_join(event):
                     port=20002,
                 )
                 
-            # Target Customer Voice (Incoming to Agent Channel)
-            start_external_media(
-                channel_id=channel,
-                conversation_id=conversation_id,
-                role="customer",
-                port=20000,
-            )
+                # Target Customer Voice (Incoming to Agent Channel)
+                start_external_media(
+                    channel_id=agent_channel,
+                    conversation_id=conversation_id,
+                    role="customer",
+                    port=20000,
+                )
+            else:
+                logger.warning(f"Cannot start transcription for room {meetme_room}. Agent channel missing.")
+                
 
 
 def start_external_media(channel_id: str, conversation_id: str, role: str, port: int):
@@ -116,7 +119,7 @@ def start_external_media(channel_id: str, conversation_id: str, role: str, port:
             f"{ari_base_url}/channels/{encoded_channel_id}/snoop",
             params={
                 "app": stt_app_name,
-                "spy": "both",
+                "spy": spy_direction,
                 "snoop_id": f"snoop_{role}_{conversation_id}",
             },
             auth=ari_auth,
