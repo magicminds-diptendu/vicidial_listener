@@ -103,7 +103,7 @@ def start_external_media(channel_id: str, conversation_id: str, role: str, port:
             params={
                 "app": stt_app_name,
                 "external_host": f"{stt_server_ip}:{port}",
-                "format": "slin",
+                "format": "ulaw",
                 "transport": "udp",
                 "encapsulation": "rtp",
                 "connection_type": "client",
