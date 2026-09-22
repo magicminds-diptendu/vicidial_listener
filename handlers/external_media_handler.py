@@ -89,8 +89,8 @@ def process_meetme_join(event):
 
 
 def start_external_media(
-    channel_id: str, conversation_id: str, role: str, target_port: int
-) -> dict:
+    channel_id: str, conversation_id: str, role: str, port: int
+):
     """Snoops a specific channel and routes audio to a dedicated RTP port via ExternalMedia."""
 
     ari_host = getattr(settings, "ARI_HOST", "127.0.0.1")
@@ -111,7 +111,7 @@ def start_external_media(
             f"{ari_base_url}/channels/externalMedia",
             params={
                 "app": stt_app_name,
-                "external_host": f"{stt_server_ip}:{target_port}",
+                "external_host": f"{stt_server_ip}:{port}",
                 "format": "slin16",
             },
             auth=ari_auth,
@@ -157,7 +157,7 @@ def start_external_media(
         ).raise_for_status()
 
         logger.info(
-            f"Started {role.upper()} audio stream for {conversation_id} on Port {target_port} (Channel: {channel_id})"
+            f"Started {role.upper()} audio stream for {conversation_id} on Port {port} (Channel: {channel_id})"
             f"external_media_id: {ext_id}"
             f"snoop_id: {snoop_id}"
             f"bridge_id: {bridge_id}"
