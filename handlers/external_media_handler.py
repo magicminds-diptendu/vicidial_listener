@@ -95,7 +95,7 @@ def start_external_media(channel_id: str, conversation_id: str, role: str, port:
     
     try:
         encoded_channel_id = urllib.parse.quote_plus(channel_id)
-        spy_direction = "in" if role.lower() == "customer" else "out"
+        spy_direction = "in" if role.lower() == "agent" else "out"
 
         # 1. External Media Channel
         ext_res = requests.post(
