@@ -170,7 +170,7 @@ def process_meetme_leave(event):
     caller_id = event_data.get("CallerIDNum", "")
 
     if channel.startswith("Local/"):
-            return
+        return
     
     if not meetme_room:
         return
