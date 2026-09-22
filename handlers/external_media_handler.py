@@ -117,7 +117,7 @@ def start_external_media(channel_id: str, conversation_id: str, role: str, port:
             f"{ari_base_url}/channels/{encoded_channel_id}/snoop",
             params={
                 "app": stt_app_name,
-                "spy": spy_direction,
+                "spy": "both",
                 "snoop_id": f"snoop_{role}_{conversation_id}",
             },
             auth=ari_auth,
