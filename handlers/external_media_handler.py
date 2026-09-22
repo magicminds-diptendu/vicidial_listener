@@ -24,7 +24,7 @@ def process_meetme_join(event):
     caller_id = event_data.get("CallerIDNum", "")
     unique_id = event_data.get("Uniqueid", "")
 
-    if not channel or not meetme_room:
+    if caller_id == "0000000000" or not channel or not meetme_room:
         return
 
     is_agent = channel.startswith("Local/") or caller_id == "ding"
