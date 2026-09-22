@@ -9,12 +9,13 @@ class ARIService:
     """Manages Asterisk REST Interface (ARI) WebSocket connections and media streaming setup."""
 
     def __init__(self):
-        self.host = getattr(settings, "ARI_HOST", "127.0.0.1:8088")
+        self.host = getattr(settings, "ARI_HOST", "127.0.0.1")
+        self.port = getattr(settings, "ARI_PORT", 8088)
         self.user = getattr(settings, "ARI_USER", "stt_service")
         self.password = getattr(settings, "ARI_PASS", "your_secure_ari_password")
 
         self.app_name = getattr(settings, "STT_APP_NAME")
-        self.ws_url = f"ws://{self.host}/ari/events?api_key={self.user}:{self.password}&app={self.app_name}"
+        self.ws_url = f"ws://{self.host}:{self.port}/ari/events?api_key={self.user}:{self.password}&app={self.app_name}"
         self.auth = (self.user, self.password)
 
         self._ws_thread = None

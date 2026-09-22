@@ -93,11 +93,12 @@ def start_external_media(
 ) -> dict:
     """Snoops a specific channel and routes audio to a dedicated RTP port via ExternalMedia."""
 
-    ari_host = getattr(settings, "ARI_HOST", "127.0.0.1:8088")
+    ari_host = getattr(settings, "ARI_HOST", "127.0.0.1")
+    ari_port = getattr(settings, "ARI_PORT", 8088)
     ari_user = getattr(settings, "ARI_USER", "stt_service")
     ari_password = getattr(settings, "ARI_PASS", "your_secure_ari_password")
     ari_auth = (ari_user, ari_password)
-    ari_base_url = f"http://{ari_host}/ari"
+    ari_base_url = f"http://{ari_host}:{ari_port}/ari"
 
     stt_app_name = getattr(settings, "STT_APP_NAME")
     stt_server_ip = getattr(settings, "STT_SERVER_IP")
