@@ -23,8 +23,11 @@ def process_meetme_join(event):
     meetme_room = event_data.get("Meetme", "")
     caller_id = event_data.get("CallerIDNum", "")
     unique_id = event_data.get("Uniqueid", "")
+    
+    if channel.startswith("Local/"):
+        return
 
-    if not channel.startswith("SIP/") or not meetme_room:
+    if not meetme_room:
         return
 
     is_agent = caller_id == "0000000000"
@@ -166,7 +169,10 @@ def process_meetme_leave(event):
     meetme_room = event_data.get("Meetme", "")
     caller_id = event_data.get("CallerIDNum", "")
 
-    if not channel.startswith("SIP/") or not meetme_room:
+    if channel.startswith("Local/"):
+            return
+    
+    if not meetme_room:
         return
 
     is_agent = caller_id == "0000000000"
