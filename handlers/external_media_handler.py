@@ -75,15 +75,14 @@ def process_meetme_join(event):
                     role="agent",
                     port=20002,
                 )
-                # Target Customer Voice (Incoming to Agent Channel)
-                start_external_media(
-                    channel_id=agent_channel,
-                    conversation_id=conversation_id,
-                    role="customer",
-                    port=20000,
-                )
-            else:
-                logger.warning(f"Cannot start transcription for room {meetme_room}. Agent channel missing.")
+                
+            # Target Customer Voice (Incoming to Agent Channel)
+            start_external_media(
+                channel_id=channel,
+                conversation_id=conversation_id,
+                role="customer",
+                port=20000,
+            )
 
 
 def start_external_media(channel_id: str, conversation_id: str, role: str, port: int):
