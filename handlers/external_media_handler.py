@@ -102,9 +102,12 @@ def start_external_media(
 
     stt_app_name = getattr(settings, "STT_APP_NAME")
     stt_server_ip = getattr(settings, "STT_SERVER_IP")
-
+    
     try:
         encoded_channel_id = urllib.parse.quote_plus(channel_id)
+        
+        # Determine spy direction based on role
+        spy_direction = "in" if role.lower() == "customer" else "out"
 
         # 1. External Media Channel
         ext_res = requests.post(
@@ -128,7 +131,7 @@ def start_external_media(
             f"{ari_base_url}/channels/{encoded_channel_id}/snoop",
             params={
                 "app": stt_app_name,
-                "spy": "in",
+                "spy": spy_direction,
                 "snoop_id": f"snoop_{role}_{conversation_id}",
             },
             auth=ari_auth,
