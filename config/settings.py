@@ -31,8 +31,7 @@ class Settings:
 
     STT_APP_NAME = os.getenv("STT_APP_NAME", "stt_service")
     STT_SERVER_IP = os.getenv("STT_SERVER_IP")
-    STT_INIT_URL = os.getenv("STT_INIT_URL")
-    STT_CLOSE_URL = os.getenv("STT_CLOSE_URL")
+    STT_API_ENDPOINT = os.getenv("STT_API_ENDPOINT")
 
     VENDOR_WEBHOOK_URL = os.getenv("VENDOR_WEBHOOK_URL")
 

@@ -8,6 +8,7 @@ from config.settings import settings
 
 room_state = {}
 room_lock = threading.Lock()
+stt_api_endpoint = getattr(settings, "STT_API_ENDPOINT", "http://127.0.0.1:5000")
 
 # Helper to centralize ARI credentials
 def get_ari_config():
@@ -23,6 +24,47 @@ def generate_conversation_id(meetme_room: str) -> str:
     short_hash = uuid.uuid4().hex[:6]
     return f"conv_{meetme_room}_{timestamp}_{short_hash}"
 
+def init_stream_session(conversation_id: str, metadata: dict) -> dict:
+    """
+    Calls /session/init on StreamManager to register call state and allocate/return dynamic audio ports.
+    
+    Returns:
+        dict containing allocated ports e.g., {"agent_port": 20002, "customer_port": 20000}
+    """
+    try:
+        response = requests.post(
+            f"{stt_api_endpoint}/session/init",
+            json={
+                "conversation_id": conversation_id,
+                "metadata": metadata,
+            },
+            timeout=3,
+        )
+        response.raise_for_status()
+        data = response.json()
+        
+        # Extract ports dictionary from API response
+        ports = data.get("ports", {})
+        logger.info(f"StreamManager session initialized for {conversation_id}: {ports}")
+        return ports
+    
+    except Exception as e:
+        logger.error(f"Failed to initialize session on StreamManager for {conversation_id}: {e}")
+        # Fallback default ports if API fails
+        return {"agent_port": 10000, "customer_port": 10001}
+
+def close_stream_session(conversation_id: str):
+    """Calls /session/close on StreamManager to initiate session teardown."""
+    try:
+        response = requests.post(
+            f"{stt_api_endpoint}/session/close",
+            json={"conversation_id": conversation_id},
+            timeout=3,
+        )
+        response.raise_for_status()
+        logger.info(f"StreamManager session closed for {conversation_id}")
+    except Exception as e:
+        logger.error(f"Failed to close session on StreamManager for {conversation_id}: {e}")
 
 def process_meetme_join(event):
     event_data = dict(event.keys) if hasattr(event, "keys") else event
@@ -68,12 +110,24 @@ def process_meetme_join(event):
 
             # FIX: We snoop the AGENT channel for both roles, using 'in' and 'out' to separate legs.
             if agent_channel:
+                # 1. Initialize session on StreamManager and retrieve active ports
+                metadata = {
+                    "meetme_room": meetme_room,
+                    "agent_channel": agent_channel,
+                    "customer_channel": channel,
+                    "customer_caller_id": caller_id,
+                }
+                ports_info = init_stream_session(conversation_id, metadata)
+                
+                agent_port = ports_info.get("agent_port", 10000)
+                customer_port = ports_info.get("customer_port", 10001)
+                
                 # Target Agent Voice
                 start_external_media(
                     channel_id=agent_channel,
                     conversation_id=conversation_id,
                     role="agent",
-                    port=20002,
+                    port=agent_port,
                 )
                 
                 # Target Customer Voice (Incoming to Agent Channel)
@@ -81,7 +135,7 @@ def process_meetme_join(event):
                     channel_id=agent_channel,
                     conversation_id=conversation_id,
                     role="customer",
-                    port=20000,
+                    port=customer_port,
                 )
             else:
                 logger.warning(f"Cannot start transcription for room {meetme_room}. Agent channel missing.")
@@ -187,6 +241,7 @@ def process_meetme_leave(event):
 
         # FIX: Active Asterisk resource teardown when the conversation falls apart
         if conv_id and ("agent" not in room or "customer" not in room):
+            # 1. Clean up Asterisk Snoop/ExternalMedia Bridges
             for role in ["agent", "customer"]:
                 target_bridge = f"bridge_{role}_{conv_id}"
                 try:
@@ -196,6 +251,9 @@ def process_meetme_leave(event):
                         logger.info(f"Successfully cleaned up Asterisk bridge: {target_bridge}")
                 except Exception as e:
                     logger.error(f"Error cleaning up bridge {target_bridge}: {str(e)}")
+                    
+            # 2. Trigger StreamManager session closure (Stops sockets, merges PCM to stereo WAV, generates LLM summary)
+            close_stream_session(conv_id)
 
         if "agent" not in room and "customer" not in room:
             room_state.pop(meetme_room, None)
