@@ -241,7 +241,7 @@ def process_meetme_leave(event):
 
         # FIX: Active Asterisk resource teardown when the conversation falls apart
         if conv_id and ("agent" not in room or "customer" not in room):
-            # 1. Clean up Asterisk Snoop/ExternalMedia Bridges
+            # Clean up Asterisk Snoop/ExternalMedia Bridges
             for role in ["agent", "customer"]:
                 target_bridge = f"bridge_{role}_{conv_id}"
                 try:
@@ -252,7 +252,7 @@ def process_meetme_leave(event):
                 except Exception as e:
                     logger.error(f"Error cleaning up bridge {target_bridge}: {str(e)}")
                     
-            # 2. Trigger StreamManager session closure (Stops sockets, merges PCM to stereo WAV, generates LLM summary)
+            # Trigger StreamManager session closure (Stops sockets, merges PCM to stereo WAV, generates LLM summary)
             close_stream_session(conv_id)
 
         if "agent" not in room and "customer" not in room:
