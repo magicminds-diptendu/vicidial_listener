@@ -76,7 +76,7 @@ def close_stream_session(conversation_id: str):
     except Exception as e:
         logger.error(f"Failed to close session on StreamManager for {conversation_id}: {e}")
 
-def process_meetme_join(event, executor=None):
+def process_meetme_join(event):
     event_data = dict(event.keys) if hasattr(event, "keys") else event
 
     channel = event_data.get("Channel", "")
@@ -117,10 +117,6 @@ def process_meetme_join(event, executor=None):
                 f"FULL CONVERSATION CONNECTED | ConvID: {conversation_id} | "
                 f"Room: {meetme_room} | Agent: {agent_channel} | Customer: {channel}"
             )
-            
-            # Non-blocking async execution offloaded to the thread pool
-            if executor:
-                executor.submit(_safe_sync_crm, caller_id, conversation_id)
 
             # FIX: We snoop the AGENT channel for both roles, using 'in' and 'out' to separate legs.
             if agent_channel:
@@ -151,6 +147,8 @@ def process_meetme_join(event, executor=None):
                     role="customer",
                     port=customer_port,
                 )
+                
+                _safe_sync_crm(phone_number=caller_id, conv_id=conversation_id)
             else:
                 logger.warning(f"Cannot start transcription for room {meetme_room}. Agent channel missing.")
                 

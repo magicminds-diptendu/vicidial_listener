@@ -40,7 +40,7 @@ def handle_meetme_join(event):
     executor.submit(process_vicidial_lead_sync, event)
 
     # Task 2: Trigger External Media Streaming separately
-    executor.submit(process_meetme_join, event, executor)
+    executor.submit(process_meetme_join, event)
 
 
 @ami.on("MeetmeLeave")
