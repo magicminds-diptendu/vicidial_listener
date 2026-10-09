@@ -27,6 +27,12 @@ def handle_new_call(event):
     executor.submit(process_crm_lead_sync, event)
 
 
+@ami.on("NewState")
+def handle_channel_state_change(event):
+    """Triggers on state changes: Ringing, Up (Answered), OffHook, etc."""
+    executor.submit(process_crm_lead_sync, event)
+
+
 @ami.on("MeetmeJoin")
 def handle_meetme_join(event):
     """Triggered on conference join. Offloads lead sync and External Media concurrently."""
@@ -34,12 +40,18 @@ def handle_meetme_join(event):
     executor.submit(process_vicidial_lead_sync, event)
 
     # Task 2: Trigger External Media Streaming separately
-    executor.submit(process_meetme_join, event)
+    executor.submit(process_meetme_join, event, executor)
 
 
 @ami.on("MeetmeLeave")
 def handle_meetme_leave(event):
     executor.submit(process_meetme_leave, event)
+    
+
+@ami.on("Hangup")
+def handle_hangup(event):
+    """Triggers on call termination with hangup cause."""
+    executor.submit(process_crm_lead_sync, event)
 
 
 def shutdown(signum, frame):

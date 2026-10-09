@@ -253,3 +253,41 @@ class LeadSyncService:
         except requests.RequestException as e:
                 logger.error(f"Error syncing vicidial for phone {phone}: {e}")
                 return False
+            
+    
+    def sync_lead_conv_id_to_crm(self, phone_number: str, conv_id: str):
+        logger.debug(f"Syncing CRM lead info: {phone_number}")
+        try:
+            lead_info = self.vicidial_service.execute_one(
+                """
+                SELECT lead_id, phone_number
+                FROM vicidial_list
+                WHERE phone_number = %s
+                ORDER BY lead_id DESC
+                LIMIT 1
+                """,
+                (phone_number,),
+            )
+
+            if not lead_info:
+                logger.warning(f"No VICIdial lead found for {phone_number}")
+                return None
+
+            transformed_payload = self.transform_payload_for_crm(lead_info)
+            
+            payload = {"conversation_id": conv_id, **transformed_payload}
+            
+            crm_response = self.send_lead_info_to_crm(payload)
+            
+            if not crm_response:
+                logger.debug(f"Failed to sync lead conv_id to CRM for phone: {phone_number}")
+                return False
+            
+            logger.info(f"Successfully synced lead conv_id to CRM for phone: {phone_number}")
+            return True
+            
+        except Exception as e:
+            logger.error(
+                f"Error syncing lead conv_id for phone {phone_number}: {e}"
+            )
+            return None

@@ -3,12 +3,14 @@ import time
 import uuid
 import urllib.parse
 import requests
-from services.logger_service import logger
 from config.settings import settings
+from services.logger_service import logger
+from services.lead_sync_service import LeadSyncService
 
 room_state = {}
 room_lock = threading.Lock()
 stt_api_endpoint = getattr(settings, "STT_API_ENDPOINT", "http://127.0.0.1:5000")
+lead_sync_service = LeadSyncService()
 
 # Helper to centralize ARI credentials
 def get_ari_config():
@@ -18,6 +20,14 @@ def get_ari_config():
     ari_password = getattr(settings, "ARI_PASS", "your_secure_ari_password")
     return (ari_user, ari_password), f"http://{ari_host}:{ari_port}/ari"
 
+def _safe_sync_crm(phone_number: str, conv_id: str):
+    """Helper function to execute CRM sync without crashing worker threads."""
+    try:
+        lead_sync_service.sync_lead_conv_id_to_crm(phone_number, conv_id)
+    except Exception:
+        logger.exception(
+            f"Failed to sync conversation_id {conv_id} for phone {phone_number} to CRM"
+        )
 
 def generate_conversation_id(meetme_room: str) -> str:
     timestamp = int(time.time())
@@ -66,7 +76,7 @@ def close_stream_session(conversation_id: str):
     except Exception as e:
         logger.error(f"Failed to close session on StreamManager for {conversation_id}: {e}")
 
-def process_meetme_join(event):
+def process_meetme_join(event, executor=None):
     event_data = dict(event.keys) if hasattr(event, "keys") else event
 
     channel = event_data.get("Channel", "")
@@ -107,6 +117,10 @@ def process_meetme_join(event):
                 f"FULL CONVERSATION CONNECTED | ConvID: {conversation_id} | "
                 f"Room: {meetme_room} | Agent: {agent_channel} | Customer: {channel}"
             )
+            
+            # Non-blocking async execution offloaded to the thread pool
+            if executor:
+                executor.submit(_safe_sync_crm, caller_id, conversation_id)
 
             # FIX: We snoop the AGENT channel for both roles, using 'in' and 'out' to separate legs.
             if agent_channel:
