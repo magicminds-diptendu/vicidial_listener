@@ -27,12 +27,6 @@ def handle_new_call(event):
     executor.submit(process_crm_lead_sync, event)
 
 
-@ami.on("NewState")
-def handle_channel_state_change(event):
-    """Triggers on state changes: Ringing, Up (Answered), OffHook, etc."""
-    executor.submit(process_crm_lead_sync, event)
-
-
 @ami.on("MeetmeJoin")
 def handle_meetme_join(event):
     """Triggered on conference join. Offloads lead sync and External Media concurrently."""
