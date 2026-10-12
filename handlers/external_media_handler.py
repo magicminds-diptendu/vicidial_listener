@@ -153,8 +153,6 @@ def process_meetme_join(event):
             else:
                 logger.warning(f"Cannot start transcription for room {meetme_room}. Agent channel missing.")
                 
-
-
 def start_external_media(channel_id: str, conversation_id: str, role: str, port: int):
     ari_auth, ari_base_url = get_ari_config()
     stt_app_name = getattr(settings, "STT_APP_NAME")
@@ -221,7 +219,6 @@ def start_external_media(channel_id: str, conversation_id: str, role: str, port:
 
     except Exception as e:
         logger.error(f"Failed to start External Media for {role} on channel {channel_id}: {str(e)}")
-
 
 def process_meetme_leave(event):
     event_data = dict(event.keys) if hasattr(event, "keys") else event
