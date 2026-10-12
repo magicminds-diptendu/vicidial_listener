@@ -23,6 +23,7 @@ def get_ari_config():
 def _safe_sync_crm(phone_number: str, conv_id: str):
     """Helper function to execute CRM sync without crashing worker threads."""
     try:
+        logger.debug("called sync_lead_conv_id_to_crm")
         lead_sync_service.sync_lead_conv_id_to_crm(phone_number, conv_id)
     except Exception:
         logger.exception(

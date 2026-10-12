@@ -51,6 +51,7 @@ def handle_meetme_leave(event):
 @ami.on("Hangup")
 def handle_hangup(event):
     """Triggers on call termination with hangup cause."""
+    logger.debug("testing hangup")
     executor.submit(process_crm_lead_sync, event)
 
 
