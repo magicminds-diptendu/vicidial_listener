@@ -253,8 +253,7 @@ class LeadSyncService:
         except requests.RequestException as e:
                 logger.error(f"Error syncing vicidial for phone {phone}: {e}")
                 return False
-            
-    
+
     def sync_lead_conv_id_to_crm(self, phone_number: str, conv_id: str):
         logger.debug(f"Syncing CRM lead info: {phone_number}")
         try:
